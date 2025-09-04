@@ -1,0 +1,37 @@
+{
+  "name": "nexa-pathfinder-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Backend server for Nexa Pathfinder",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "dev:watch": "nodemon --watch . --ext js,json --exec \"node index.js\"",
+    "build": "echo 'No build step required for Node.js'",
+    "test": "echo 'No tests specified'",
+    "lint": "echo 'No linting configured'"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.56.1",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^4.19.2",
+    "helmet": "^8.1.0",
+    "node-fetch": "^3.3.2",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  },
+  "keywords": [
+    "nexa",
+    "pathfinder",
+    "backend",
+    "api",
+    "express",
+    "socket.io"
+  ],
+  "author": "Nexa Pathfinder Team",
+  "license": "MIT"
+}
