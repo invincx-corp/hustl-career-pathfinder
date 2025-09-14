@@ -13,44 +13,52 @@ export const CAREER_API_CONFIG = {
     enabled: true
   },
 
-  // Job Positions API by SharpAPI
-  SHARPAPI: {
-    baseURL: 'https://api.sharpapi.com',
-    apiKey: process.env.VITE_SHARPAPI_KEY || '',
-    rateLimit: 100, // requests per hour (free tier)
-    enabled: !!process.env.VITE_SHARPAPI_KEY
+  // GitHub API for developer jobs and repositories
+  GITHUB: {
+    baseURL: 'https://api.github.com',
+    apiKey: import.meta.env.VITE_GITHUB_API_KEY || '',
+    rateLimit: 5000, // requests per hour (authenticated)
+    enabled: !!import.meta.env.VITE_GITHUB_API_KEY
   },
 
-  // Job Listings API by Enrich.so
-  ENRICH: {
-    baseURL: 'https://api.enrich.so',
-    apiKey: process.env.VITE_ENRICH_API_KEY || '',
-    rateLimit: 50, // requests per hour (free tier)
-    enabled: !!process.env.VITE_ENRICH_API_KEY
+  // Twitter API for tech trends and job discussions
+  TWITTER: {
+    baseURL: 'https://api.twitter.com/2',
+    apiKey: import.meta.env.VITE_TWITTER_API_KEY || '',
+    rateLimit: 300, // requests per 15 minutes
+    enabled: !!import.meta.env.VITE_TWITTER_API_KEY
   },
 
-  // Jobs API by Coresignal
-  CORESIGNAL: {
-    baseURL: 'https://api.coresignal.com',
-    apiKey: process.env.VITE_CORESIGNAL_API_KEY || '',
-    rateLimit: 100, // requests per hour (free tier)
-    enabled: !!process.env.VITE_CORESIGNAL_API_KEY
+  // Dev.to API for developer articles and jobs
+  DEVTO: {
+    baseURL: 'https://dev.to/api',
+    apiKey: import.meta.env.VITE_DEVTO_API_KEY || '',
+    rateLimit: 1000, // requests per hour
+    enabled: !!import.meta.env.VITE_DEVTO_API_KEY
+  },
+
+  // Stack Overflow API for Q&A and job insights
+  STACKOVERFLOW: {
+    baseURL: 'https://api.stackexchange.com/2.3',
+    apiKey: import.meta.env.VITE_STACKOVERFLOW_API_KEY || '',
+    rateLimit: 10000, // requests per day
+    enabled: !!import.meta.env.VITE_STACKOVERFLOW_API_KEY
   },
 
   // Job Postings API by JobDataFeeds
   JOBDATAFEEDS: {
     baseURL: 'https://api.jobdatafeeds.com',
-    apiKey: process.env.VITE_JOBDATAFEEDS_API_KEY || '',
+    apiKey: import.meta.env.VITE_JOBDATAFEEDS_API_KEY || '',
     rateLimit: 50, // requests per hour (free tier)
-    enabled: !!process.env.VITE_JOBDATAFEEDS_API_KEY
+    enabled: !!import.meta.env.VITE_JOBDATAFEEDS_API_KEY
   },
 
   // Career Site Job Listing API by Apify
   APIFY: {
     baseURL: 'https://api.apify.com',
-    apiKey: process.env.VITE_APIFY_API_KEY || '',
+    apiKey: import.meta.env.VITE_APIFY_API_KEY || '',
     rateLimit: 100, // requests per hour (free tier)
-    enabled: !!process.env.VITE_APIFY_API_KEY
+    enabled: !!import.meta.env.VITE_APIFY_API_KEY
   }
 };
 

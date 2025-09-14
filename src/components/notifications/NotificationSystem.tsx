@@ -5,6 +5,8 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { useUserContext } from '@/hooks/useUserContext';
+import { useAuth } from '@/hooks/useAuth';
 import { 
   Select,
   SelectContent,
@@ -161,8 +163,15 @@ interface NotificationSystemProps {
 }
 
 export default function NotificationSystem({ userId }: NotificationSystemProps) {
-  const [notifications, setNotifications] = useState<Notification[]>(SAMPLE_NOTIFICATIONS);
-  const [filteredNotifications, setFilteredNotifications] = useState<Notification[]>(SAMPLE_NOTIFICATIONS);
+  const { user } = useAuth();
+  const { 
+    dashboardData, 
+    markNotificationAsRead, 
+    isLoading 
+  } = useUserContext();
+  
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [filteredNotifications, setFilteredNotifications] = useState<Notification[]>([]);
   const [settings, setSettings] = useState<NotificationSettings>({
     emailNotifications: true,
     pushNotifications: true,
@@ -184,6 +193,27 @@ export default function NotificationSystem({ userId }: NotificationSystemProps) 
   const [filterType, setFilterType] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [isMarkingAsRead, setIsMarkingAsRead] = useState(false);
+
+  // Load notifications from dashboard data
+  useEffect(() => {
+    if (dashboardData?.notifications) {
+      const formattedNotifications = dashboardData.notifications.map((notification: any) => ({
+        id: notification.id,
+        title: notification.title,
+        message: notification.message,
+        type: notification.type || 'system',
+        priority: notification.priority || 'medium',
+        isRead: notification.is_read || false,
+        isArchived: notification.is_archived || false,
+        createdAt: notification.created_at,
+        scheduledFor: notification.scheduled_for,
+        actionUrl: notification.action_url,
+        actionText: notification.action_text
+      }));
+      setNotifications(formattedNotifications);
+    }
+  }, [dashboardData]);
 
   useEffect(() => {
     filterNotifications();
@@ -212,14 +242,25 @@ export default function NotificationSystem({ userId }: NotificationSystemProps) 
     setFilteredNotifications(filtered);
   };
 
-  const markAsRead = (notificationId: string) => {
-    setNotifications(prev =>
-      prev.map(notification =>
-        notification.id === notificationId
-          ? { ...notification, isRead: true }
-          : notification
-      )
-    );
+  const markAsRead = async (notificationId: string) => {
+    setIsMarkingAsRead(true);
+    try {
+      const success = await markNotificationAsRead(notificationId);
+      if (success) {
+        // Update local state
+        setNotifications(prev =>
+          prev.map(notification =>
+            notification.id === notificationId
+              ? { ...notification, isRead: true }
+              : notification
+          )
+        );
+      }
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    } finally {
+      setIsMarkingAsRead(false);
+    }
   };
 
   const markAllAsRead = () => {
@@ -417,6 +458,7 @@ export default function NotificationSystem({ userId }: NotificationSystemProps) 
                               size="sm"
                               variant="ghost"
                               onClick={() => markAsRead(notification.id)}
+                              disabled={isMarkingAsRead}
                             >
                               <CheckCircle className="h-4 w-4" />
                             </Button>

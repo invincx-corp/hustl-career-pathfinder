@@ -144,12 +144,62 @@ export class APIService {
     });
   }
 
+  async generatePersonalizedRoadmap(preferences: any) {
+    return this.request('/ai/roadmap/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        userId: preferences.userId || 'anonymous',
+        goal: preferences.goal || 'Learn new skills',
+        category: preferences.category || 'General',
+        difficulty: preferences.difficulty || 'beginner',
+        userProfile: {
+          experience_level: preferences.experienceLevel || 'beginner',
+          skills: preferences.likedTopics || [],
+          interests: preferences.likedDomains || [],
+          goals: [preferences.goal || 'Learn new skills']
+        }
+      }),
+    });
+  }
+
   async analyzeSkillGaps(analysisData: any) {
     return this.request('/ai/skills/analyze', {
       method: 'POST',
       body: JSON.stringify(analysisData),
     });
   }
+
+  async getDetailedLearningSteps(roadmapId: string, stepId: string) {
+    return this.request(`/ai/roadmap/${roadmapId}/steps/${stepId}/details`, {
+      method: 'GET',
+    });
+  }
+
+  async generateStepResources(stepData: any) {
+    return this.request('/ai/roadmap/generate-resources', {
+      method: 'POST',
+      body: JSON.stringify(stepData),
+    });
+  }
+
+  async getUserRoadmaps(userId: string) {
+    return this.request(`/roadmaps/user/${userId}`);
+  }
+
+  async trackUserActivity(userId: string, activity: any) {
+    return this.request(`/auth/activity/${userId}`, {
+      method: 'POST',
+      body: JSON.stringify(activity),
+    });
+  }
+
+  async updateRoadmapStep(roadmapId: string, stepId: string, stepData: any) {
+    return this.request(`/roadmaps/${roadmapId}/steps/${stepId}`, {
+      method: 'PUT',
+      body: JSON.stringify(stepData),
+    });
+  }
+
 
   async chatWithCoach(chatData: any) {
     return this.request('/ai/coach/chat', {

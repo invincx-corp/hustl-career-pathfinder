@@ -60,9 +60,10 @@ class CareerAPIService {
   // Primary API: O*NET API (Free, comprehensive)
   private async fetchONETData(socCode?: string): Promise<CareerAPIResponse[]> {
     try {
+      // Use proxy to avoid CORS issues
       const url = socCode 
-        ? `https://api.onetcenter.org/ws/online/occupations/${socCode}/details`
-        : 'https://api.onetcenter.org/ws/online/occupations';
+        ? `/api/onet/occupations/${socCode}/details`
+        : '/api/onet/occupations';
       
       const response = await fetch(url, {
         headers: {
@@ -92,7 +93,7 @@ class CareerAPIService {
       
       const response = await fetch(url, {
         headers: {
-          'X-API-Key': process.env.VITE_SHARPAPI_KEY || '',
+          'X-API-Key': import.meta.env.VITE_SHARPAPI_KEY || '',
           'Accept': 'application/json'
         }
       });
@@ -107,6 +108,12 @@ class CareerAPIService {
       console.warn('Job Positions API unavailable:', error);
       return this.fetchLocalCareerData();
     }
+  }
+
+  // Backup data fallback
+  private async fetchBackupCareerData(): Promise<CareerAPIResponse[]> {
+    console.log('Using backup career data...');
+    return this.getExpandedLocalCareers();
   }
 
   // Fallback: Local comprehensive career data

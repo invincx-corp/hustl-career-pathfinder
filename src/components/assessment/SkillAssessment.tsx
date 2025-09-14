@@ -5,6 +5,8 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
+import { useUserContext } from '@/hooks/useUserContext';
+import { useAuth } from '@/hooks/useAuth';
 import { 
   Brain, 
   CheckCircle, 
@@ -272,10 +274,13 @@ interface SkillAssessmentProps {
 }
 
 const SkillAssessment: React.FC<SkillAssessmentProps> = ({ onComplete, onSkip }) => {
+  const { user } = useAuth();
+  const { saveSkillAssessment, isLoading } = useUserContext();
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [showResults, setShowResults] = useState(false);
   const [results, setResults] = useState<AssessmentResult[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
 
   const currentQuestion = ASSESSMENT_QUESTIONS[currentQuestionIndex];
   const progress = ((currentQuestionIndex + 1) / ASSESSMENT_QUESTIONS.length) * 100;
@@ -301,7 +306,7 @@ const SkillAssessment: React.FC<SkillAssessmentProps> = ({ onComplete, onSkip })
     }
   };
 
-  const calculateResults = () => {
+  const calculateResults = async () => {
     const categoryScores: Record<string, { total: number; count: number }> = {};
     
     // Calculate scores for each category
@@ -361,6 +366,30 @@ const SkillAssessment: React.FC<SkillAssessmentProps> = ({ onComplete, onSkip })
 
     setResults(assessmentResults);
     setShowResults(true);
+
+    // Save results to database
+    if (user?.id) {
+      setIsSaving(true);
+      try {
+        const success = await saveSkillAssessment({
+          answers,
+          results: assessmentResults,
+          completed_at: new Date().toISOString(),
+          total_questions: ASSESSMENT_QUESTIONS.length,
+          answered_questions: Object.keys(answers).length
+        });
+
+        if (success) {
+          console.log('Skill assessment results saved successfully');
+        } else {
+          console.error('Failed to save skill assessment results');
+        }
+      } catch (error) {
+        console.error('Error saving skill assessment:', error);
+      } finally {
+        setIsSaving(false);
+      }
+    }
   };
 
   const handleComplete = () => {
@@ -505,9 +534,9 @@ const SkillAssessment: React.FC<SkillAssessmentProps> = ({ onComplete, onSkip })
             )}
             <Button
               onClick={handleNext}
-              disabled={!answers[currentQuestion.id]}
+              disabled={!answers[currentQuestion.id] || isSaving}
             >
-              {currentQuestionIndex === ASSESSMENT_QUESTIONS.length - 1 ? 'Complete' : 'Next'}
+              {isSaving ? 'Saving...' : (currentQuestionIndex === ASSESSMENT_QUESTIONS.length - 1 ? 'Complete' : 'Next')}
               <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
           </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import ApiService from '@/lib/api-services';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -62,8 +63,124 @@ const SkillStacker = () => {
   const loadUserSkills = async () => {
     setIsLoading(true);
     try {
-      // TODO: Replace with real API call to get user's skill data
-      // For now, we'll use the user's stored skills from their profile
+      if (!user?.id) {
+        setIsLoading(false);
+        return;
+      }
+
+      // Get user's skills from database
+      const skillsResult = await ApiService.getUserSkills(user.id);
+      if (!skillsResult.success) {
+        throw new Error('Failed to load user skills');
+      }
+
+      // Get skill categories
+      const categoriesResult = await ApiService.getSkillCategories();
+      if (!categoriesResult.success) {
+        throw new Error('Failed to load skill categories');
+      }
+
+      const userSkills = skillsResult.data;
+      const skillCategories = categoriesResult.data;
+
+      // Group skills by category
+      const skillsByCategory: { [key: string]: any[] } = {};
+      userSkills.forEach((skill: any) => {
+        const categoryId = skill.category_id || 'general';
+        if (!skillsByCategory[categoryId]) {
+          skillsByCategory[categoryId] = [];
+        }
+        skillsByCategory[categoryId].push(skill);
+      });
+
+      // Map to component format
+      const mappedCategories: SkillCategory[] = skillCategories.map((category: any) => {
+        const categorySkills = skillsByCategory[category.id] || [];
+        
+        // Get icon based on category name
+        const getIcon = (name: string) => {
+          switch (name.toLowerCase()) {
+            case 'programming': return BookOpen;
+            case 'design': return Star;
+            case 'data science': return BarChart3;
+            case 'business': return TrendingUp;
+            case 'marketing': return Zap;
+            default: return Target;
+          }
+        };
+
+        // Get color based on category name
+        const getColor = (name: string) => {
+          switch (name.toLowerCase()) {
+            case 'programming': return 'bg-blue-500';
+            case 'design': return 'bg-pink-500';
+            case 'data science': return 'bg-green-500';
+            case 'business': return 'bg-yellow-500';
+            case 'marketing': return 'bg-purple-500';
+            default: return 'bg-gray-500';
+          }
+        };
+
+        const mappedSkills: Skill[] = categorySkills.map((skill: any) => ({
+          id: skill.id,
+          name: skill.name,
+          category: category.name,
+          currentLevel: skill.current_level || 1,
+          targetLevel: skill.target_level || 5,
+          progress: skill.progress_percentage || 0,
+          lastPracticed: skill.last_practiced ? 
+            new Date(skill.last_practiced).toLocaleDateString() : 
+            'Never',
+          totalTimeSpent: skill.total_time_spent || 0,
+          resources: skill.resources || [],
+          nextSteps: skill.next_steps || [],
+          isActive: skill.is_active !== false
+        }));
+
+        const totalProgress = mappedSkills.length > 0 
+          ? Math.round(mappedSkills.reduce((sum, skill) => sum + skill.progress, 0) / mappedSkills.length)
+          : 0;
+
+        return {
+          id: category.id,
+          name: category.name,
+          icon: getIcon(category.name),
+          color: getColor(category.name),
+          totalProgress,
+          skills: mappedSkills
+        };
+      });
+
+      setSkillCategories(mappedCategories);
+
+      // Calculate user stats
+      const totalSkills = userSkills.length;
+      const skillsInProgress = userSkills.filter((s: any) => s.progress_percentage > 0 && s.progress_percentage < 100).length;
+      const skillsCompleted = userSkills.filter((s: any) => s.progress_percentage === 100).length;
+      const totalTimeSpent = userSkills.reduce((sum: number, s: any) => sum + (s.total_time_spent || 0), 0);
+      const averageProgress = totalSkills > 0 
+        ? Math.round(userSkills.reduce((sum: number, s: any) => sum + (s.progress_percentage || 0), 0) / totalSkills)
+        : 0;
+
+      setUserStats({
+        totalSkills,
+        skillsInProgress,
+        skillsCompleted,
+        totalTimeSpent,
+        averageProgress
+      });
+
+    } catch (error) {
+      console.error('Error loading user skills:', error);
+      // Fallback to mock data if API fails
+      loadMockSkills();
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadMockSkills = () => {
+    try {
       const userSkills = user?.skills || [];
       const skillAssessmentResults = user?.skill_assessment_results || {};
       
@@ -190,9 +307,7 @@ const SkillStacker = () => {
       
       setUserStats(stats);
     } catch (error) {
-      console.error('Error loading user skills:', error);
-    } finally {
-      setIsLoading(false);
+      console.error('Error loading mock skills:', error);
     }
   };
 
@@ -203,10 +318,91 @@ const SkillStacker = () => {
 
   const trackSkillInteraction = async (skillId: string) => {
     try {
-      // TODO: Implement real API call to track skill interaction
-      console.log('Tracking interaction with skill:', skillId);
+      if (!user?.id) return;
+
+      await ApiService.trackUserActivity(user.id, {
+        activity_type: 'skill_interaction',
+        activity_name: 'Interacted with skill',
+        category: 'skill_stacker',
+        page_url: '/skill-stacker',
+        metadata: {
+          skill_id: skillId,
+          timestamp: new Date().toISOString()
+        }
+      });
     } catch (error) {
       console.error('Error tracking skill interaction:', error);
+    }
+  };
+
+  const updateSkillProgress = async (skillId: string, updates: any) => {
+    try {
+      if (!user?.id) return;
+
+      const result = await ApiService.updateSkillProgress(skillId, updates);
+      
+      if (result.success) {
+        // Update local state
+        setSkillCategories(prev => prev.map(category => ({
+          ...category,
+          skills: category.skills.map(skill => 
+            skill.id === skillId ? { ...skill, ...updates } : skill
+          )
+        })));
+
+        // Track the activity
+        await ApiService.trackUserActivity(user.id, {
+          activity_type: 'skill_update',
+          activity_name: 'Updated skill progress',
+          category: 'skill_stacker',
+          page_url: '/skill-stacker',
+          metadata: {
+            skill_id: skillId,
+            updates: updates,
+            timestamp: new Date().toISOString()
+          }
+        });
+
+        // Reload skills to get updated stats
+        loadUserSkills();
+      }
+    } catch (error) {
+      console.error('Error updating skill progress:', error);
+    }
+  };
+
+  const addNewSkill = async (skillData: {
+    name: string;
+    category_id: string;
+    current_level?: number;
+    target_level?: number;
+    resources?: string[];
+    next_steps?: string[];
+  }) => {
+    try {
+      if (!user?.id) return;
+
+      const result = await ApiService.addUserSkill(user.id, skillData);
+      
+      if (result.success) {
+        // Track the activity
+        await ApiService.trackUserActivity(user.id, {
+          activity_type: 'skill_addition',
+          activity_name: 'Added new skill',
+          category: 'skill_stacker',
+          page_url: '/skill-stacker',
+          metadata: {
+            skill_name: skillData.name,
+            category_id: skillData.category_id,
+            timestamp: new Date().toISOString()
+          }
+        });
+
+        // Reload skills to show the new skill
+        loadUserSkills();
+      }
+    } catch (error) {
+      console.error('Error adding new skill:', error);
     }
   };
 

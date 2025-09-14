@@ -95,6 +95,14 @@ const navigationSections = [
       { name: 'Settings', href: '/settings', icon: Settings },
       { name: 'Help & Support', href: '/help', icon: HelpCircle },
     ]
+  },
+  {
+    title: 'System',
+    icon: Shield,
+    items: [
+      { name: 'System Status', href: '/system-status', icon: Shield },
+      { name: 'Integration Test', href: '/system-integration-test', icon: BarChart3 },
+    ]
   }
 ];
 

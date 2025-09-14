@@ -5,6 +5,8 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { useUserContext } from '@/hooks/useUserContext';
+import { useAuth } from '@/hooks/useAuth';
 import { 
   Dialog,
   DialogContent,
@@ -216,13 +218,50 @@ const STATUS_COLORS = {
 };
 
 export default function ProjectShowcase({ userId, isOwnProfile = false }: ProjectShowcaseProps) {
-  const [projects, setProjects] = useState<Project[]>(SAMPLE_PROJECTS);
-  const [filteredProjects, setFilteredProjects] = useState<Project[]>(SAMPLE_PROJECTS);
+  const { user } = useAuth();
+  const { 
+    dashboardData, 
+    createProject, 
+    updateProject, 
+    deleteProject, 
+    isLoading 
+  } = useUserContext();
+  
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [filteredProjects, setFilteredProjects] = useState<Project[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [isAddProjectOpen, setIsAddProjectOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Load projects from dashboard data
+  useEffect(() => {
+    if (dashboardData?.projects) {
+      const formattedProjects = dashboardData.projects.map((project: any) => ({
+        id: project.id,
+        title: project.title,
+        description: project.description,
+        longDescription: project.description, // Use description as long description for now
+        technologies: project.technologies || [],
+        category: project.category || 'other',
+        status: project.status || 'planned',
+        difficulty: project.difficulty_level || 'beginner',
+        estimatedTime: project.estimated_duration || '1 week',
+        actualTime: project.actual_duration,
+        githubUrl: project.github_url,
+        liveUrl: project.live_url,
+        imageUrl: project.image_url,
+        createdAt: project.created_at,
+        updatedAt: project.updated_at,
+        features: project.features || [],
+        challenges: project.challenges || [],
+        learnings: project.learnings || []
+      }));
+      setProjects(formattedProjects);
+    }
+  }, [dashboardData]);
 
   useEffect(() => {
     filterProjects();
@@ -250,51 +289,82 @@ export default function ProjectShowcase({ userId, isOwnProfile = false }: Projec
     setFilteredProjects(filtered);
   };
 
-  const handleAddProject = (projectData: Partial<Project>) => {
-    const newProject: Project = {
-      id: Date.now().toString(),
-      title: projectData.title || '',
-      description: projectData.description || '',
-      longDescription: projectData.longDescription || '',
-      technologies: projectData.technologies || [],
-      category: projectData.category || 'other',
-      status: projectData.status || 'planned',
-      difficulty: projectData.difficulty || 'beginner',
-      estimatedTime: projectData.estimatedTime || '',
-      actualTime: projectData.actualTime,
-      githubUrl: projectData.githubUrl,
-      liveUrl: projectData.liveUrl,
-      imageUrl: projectData.imageUrl,
-      createdAt: new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0],
-      tags: projectData.tags || [],
-      features: projectData.features || [],
-      challenges: projectData.challenges || [],
-      learnings: projectData.learnings || [],
-      isPublic: projectData.isPublic ?? true,
-      likes: 0,
-      views: 0
-    };
+  const handleAddProject = async (projectData: Partial<Project>) => {
+    if (!user?.id) return;
+    
+    setIsSaving(true);
+    try {
+      const success = await createProject({
+        title: projectData.title || '',
+        description: projectData.description || '',
+        category: projectData.category || 'other',
+        technologies: projectData.technologies || [],
+        status: projectData.status || 'planned',
+        difficulty_level: projectData.difficulty || 'beginner',
+        estimated_duration: projectData.estimatedTime || '1 week',
+        actual_duration: projectData.actualTime,
+        github_url: projectData.githubUrl,
+        live_url: projectData.liveUrl,
+        image_url: projectData.imageUrl,
+        features: projectData.features || [],
+        challenges: projectData.challenges || [],
+        learnings: projectData.learnings || []
+      });
 
-    setProjects(prev => [newProject, ...prev]);
-    setIsAddProjectOpen(false);
+      if (success) {
+        setIsAddProjectOpen(false);
+      }
+    } catch (error) {
+      console.error('Error creating project:', error);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleEditProject = (projectData: Partial<Project>) => {
+  const handleEditProject = async (projectData: Partial<Project>) => {
     if (!editingProject) return;
 
-    const updatedProject = {
-      ...editingProject,
-      ...projectData,
-      updatedAt: new Date().toISOString().split('T')[0]
-    };
+    setIsSaving(true);
+    try {
+      const success = await updateProject(editingProject.id, {
+        title: projectData.title || editingProject.title,
+        description: projectData.description || editingProject.description,
+        category: projectData.category || editingProject.category,
+        technologies: projectData.technologies || editingProject.technologies,
+        status: projectData.status || editingProject.status,
+        difficulty_level: projectData.difficulty || editingProject.difficulty,
+        estimated_duration: projectData.estimatedTime || editingProject.estimatedTime,
+        actual_duration: projectData.actualTime || editingProject.actualTime,
+        github_url: projectData.githubUrl || editingProject.githubUrl,
+        live_url: projectData.liveUrl || editingProject.liveUrl,
+        image_url: projectData.imageUrl || editingProject.imageUrl,
+        features: projectData.features || editingProject.features,
+        challenges: projectData.challenges || editingProject.challenges,
+        learnings: projectData.learnings || editingProject.learnings
+      });
 
-    setProjects(prev => prev.map(p => p.id === editingProject.id ? updatedProject : p));
-    setEditingProject(null);
+      if (success) {
+        setEditingProject(null);
+      }
+    } catch (error) {
+      console.error('Error updating project:', error);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleDeleteProject = (projectId: string) => {
-    setProjects(prev => prev.filter(p => p.id !== projectId));
+  const handleDeleteProject = async (projectId: string) => {
+    setIsSaving(true);
+    try {
+      const success = await deleteProject(projectId);
+      if (!success) {
+        console.error('Failed to delete project');
+      }
+    } catch (error) {
+      console.error('Error deleting project:', error);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const categories = ['all', ...Array.from(new Set(projects.map(p => p.category)))];
@@ -706,8 +776,8 @@ function ProjectForm({ project, onSubmit, onCancel }: ProjectFormProps) {
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit">
-          {project ? 'Update Project' : 'Add Project'}
+        <Button type="submit" disabled={isSaving}>
+          {isSaving ? 'Saving...' : (project ? 'Update Project' : 'Add Project')}
         </Button>
       </div>
     </form>

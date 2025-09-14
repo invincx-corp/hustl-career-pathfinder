@@ -1,17 +1,30 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Menu, X, Compass, Map, Users, Briefcase, User, Brain, Target, Heart, Zap, BookOpen, UserCheck } from "lucide-react";
 import { AuthModal } from "@/components/auth/AuthModal";
 
 const Navigation = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const navigate = useNavigate();
 
   const handleNavClick = (href: string) => {
     setIsOpen(false);
     const element = document.querySelector(href);
     if (element) {
+      // Temporarily enable smooth scrolling for navigation
+      document.documentElement.style.scrollBehavior = 'smooth';
       element.scrollIntoView({ behavior: 'smooth' });
+      // Reset to auto after scrolling
+      setTimeout(() => {
+        document.documentElement.style.scrollBehavior = 'auto';
+      }, 1000);
     }
+  };
+
+  const handleGetStarted = () => {
+    setIsOpen(false);
+    navigate('/signup');
   };
 
   const navItems = [
@@ -64,7 +77,7 @@ const Navigation = () => {
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center space-x-4">
             <AuthModal />
-            <Button variant="hero" size="sm">
+            <Button variant="hero" size="sm" onClick={handleGetStarted}>
               Get Started
             </Button>
           </div>
@@ -94,7 +107,7 @@ const Navigation = () => {
               ))}
               <div className="flex flex-col space-y-2 px-4 pt-4 border-t border-border">
                 <AuthModal />
-                <Button variant="hero" className="justify-start">
+                <Button variant="hero" className="justify-start" onClick={handleGetStarted}>
                   Get Started
                 </Button>
               </div>

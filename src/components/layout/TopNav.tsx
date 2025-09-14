@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import RecycleBin from '@/components/ui/RecycleBin';
+import NotificationCenter from '@/components/ui/NotificationCenter';
+import { NotificationService } from '@/lib/notification-service';
+import { RecycleBinService } from '@/lib/recycle-bin-service';
 import { 
   Menu, 
   Search, 
@@ -22,7 +26,8 @@ import {
   HelpCircle,
   Moon,
   Sun,
-  X
+  X,
+  Trash2
 } from 'lucide-react';
 
 interface TopNavProps {
@@ -32,7 +37,40 @@ interface TopNavProps {
 
 const TopNav: React.FC<TopNavProps> = ({ onMenuClick, sidebarOpen = false }) => {
   const { user, signOut } = useAuth();
-  const [notifications] = useState(3); // Mock notification count
+  const [notifications, setNotifications] = useState(0);
+  const [recycleBinItems, setRecycleBinItems] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showRecycleBin, setShowRecycleBin] = useState(false);
+
+  useEffect(() => {
+    // Subscribe to notification updates
+    const unsubscribeNotifications = NotificationService.subscribe((newNotifications) => {
+      const unreadCount = newNotifications.filter(n => !n.read).length;
+      setNotifications(unreadCount);
+    });
+
+    // Subscribe to recycle bin updates
+    const updateRecycleBinCount = () => {
+      const items = RecycleBinService.getAllItems();
+      setRecycleBinItems(items.length);
+    };
+
+    updateRecycleBinCount();
+
+    // Listen for storage changes to update recycle bin count
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'recycle_bin_items') {
+        updateRecycleBinCount();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      unsubscribeNotifications();
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
 
   const handleSignOut = async () => {
     await signOut();
@@ -84,8 +122,31 @@ const TopNav: React.FC<TopNavProps> = ({ onMenuClick, sidebarOpen = false }) => 
 
         {/* Right side */}
         <div className="flex items-center space-x-4">
+          {/* Recycle Bin */}
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="relative"
+            onClick={() => setShowRecycleBin(true)}
+          >
+            <Trash2 className="h-5 w-5" />
+            {recycleBinItems > 0 && (
+              <Badge 
+                variant="secondary" 
+                className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
+              >
+                {recycleBinItems}
+              </Badge>
+            )}
+          </Button>
+
           {/* Notifications */}
-          <Button variant="ghost" size="sm" className="relative">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="relative"
+            onClick={() => setShowNotifications(true)}
+          >
             <Bell className="h-5 w-5" />
             {notifications > 0 && (
               <Badge 
@@ -142,6 +203,16 @@ const TopNav: React.FC<TopNavProps> = ({ onMenuClick, sidebarOpen = false }) => 
           </DropdownMenu>
         </div>
       </div>
+
+      {/* Modals */}
+      <NotificationCenter 
+        isOpen={showNotifications} 
+        onClose={() => setShowNotifications(false)} 
+      />
+      <RecycleBin 
+        isOpen={showRecycleBin} 
+        onClose={() => setShowRecycleBin(false)} 
+      />
     </header>
   );
 };

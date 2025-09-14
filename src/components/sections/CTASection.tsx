@@ -70,9 +70,9 @@ const CTASection = () => {
   return (
     <section className="py-20 bg-gradient-hero relative overflow-hidden">
       {/* Background Elements */}
-      <div className="absolute inset-0 bg-black/20"></div>
-      <div className="absolute top-10 left-10 w-32 h-32 bg-white/10 rounded-full blur-3xl animate-float"></div>
-      <div className="absolute bottom-10 right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl animate-float" style={{animationDelay: "2s"}}></div>
+      <div className="absolute inset-0 bg-black/20 pointer-events-none"></div>
+      <div className="absolute top-10 left-10 w-32 h-32 bg-white/10 rounded-full blur-3xl animate-float pointer-events-none"></div>
+      <div className="absolute bottom-10 right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl animate-float pointer-events-none" style={{animationDelay: "2s"}}></div>
       
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className="max-w-4xl mx-auto text-center animate-fade-in">

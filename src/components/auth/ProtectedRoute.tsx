@@ -39,7 +39,7 @@ export default function ProtectedRoute({ children, requireOnboarding = false }: 
   const appRoutes = [
     '/dashboard', '/learning-paths', '/projects', '/settings', '/skill-assessment', 
     '/mentor-matchmaking', '/curiosity-compass', '/skill-stacker', '/adaptive-capsules',
-    '/ai-roadmap', '/living-resume', '/self-graph', '/project-showcase', '/career-coach',
+    '/ai-roadmap', '/test-ai-generation', '/test-database', '/verify-journey', '/living-resume', '/self-graph', '/project-showcase', '/career-coach',
     '/career-therapist', '/job-matching', '/domain-supply-demand', '/career-explorer',
     '/calendar', '/achievements', '/help'
   ];

@@ -11,6 +11,7 @@ const HeroSection = () => {
   const navigate = useNavigate();
 
   const handleGetStarted = () => {
+    console.log('Start Your Journey button clicked!');
     navigate('/signup');
   };
 
@@ -37,11 +38,11 @@ const HeroSection = () => {
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-br from-background via-background to-muted/20">
       {/* Background Elements */}
-      <div className="absolute inset-0 bg-gradient-hero opacity-5"></div>
-      <div className="absolute top-20 left-10 w-32 h-32 bg-primary/10 rounded-full blur-3xl animate-float"></div>
-      <div className="absolute bottom-20 right-10 w-40 h-40 bg-secondary/10 rounded-full blur-3xl animate-float" style={{animationDelay: "2s"}}></div>
+      <div className="absolute inset-0 bg-gradient-hero opacity-5 pointer-events-none"></div>
+      <div className="absolute top-20 left-10 w-32 h-32 bg-primary/10 rounded-full blur-3xl animate-float pointer-events-none"></div>
+      <div className="absolute bottom-20 right-10 w-40 h-40 bg-secondary/10 rounded-full blur-3xl animate-float pointer-events-none" style={{animationDelay: "2s"}}></div>
       
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-16">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-16 relative z-10">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           {/* Content */}
           <div className="text-center lg:text-left space-y-8 animate-fade-in">
@@ -143,8 +144,8 @@ const HeroSection = () => {
             </div>
             
             {/* Floating Elements */}
-            <div className="absolute -top-4 -left-4 w-24 h-24 bg-secondary/20 rounded-full blur-xl animate-pulse-glow"></div>
-            <div className="absolute -bottom-4 -right-4 w-32 h-32 bg-accent/20 rounded-full blur-xl animate-pulse-glow" style={{animationDelay: "1s"}}></div>
+            <div className="absolute -top-4 -left-4 w-24 h-24 bg-secondary/20 rounded-full blur-xl animate-pulse-glow pointer-events-none"></div>
+            <div className="absolute -bottom-4 -right-4 w-32 h-32 bg-accent/20 rounded-full blur-xl animate-pulse-glow pointer-events-none" style={{animationDelay: "1s"}}></div>
           </div>
         </div>
       </div>

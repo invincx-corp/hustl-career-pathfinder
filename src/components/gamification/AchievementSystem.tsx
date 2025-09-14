@@ -3,6 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { useUserContext } from '@/hooks/useUserContext';
+import { useAuth } from '@/hooks/useAuth';
 import { 
   Trophy, 
   Star, 
@@ -335,6 +337,13 @@ interface AchievementSystemProps {
 }
 
 export default function AchievementSystem({ userId }: AchievementSystemProps) {
+  const { user } = useAuth();
+  const { 
+    dashboardData, 
+    unlockAchievement, 
+    isLoading 
+  } = useUserContext();
+  
   const [achievements, setAchievements] = useState<Achievement[]>(ACHIEVEMENTS);
   const [userStats, setUserStats] = useState<UserStats>({
     level: 12,
@@ -354,6 +363,21 @@ export default function AchievementSystem({ userId }: AchievementSystemProps) {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>(SAMPLE_LEADERBOARD);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedRarity, setSelectedRarity] = useState<string>('all');
+  const [isUnlocking, setIsUnlocking] = useState(false);
+
+  // Load achievements from dashboard data
+  useEffect(() => {
+    if (dashboardData?.achievements) {
+      // Update user stats based on real data
+      const stats = dashboardData.stats || {};
+      setUserStats(prev => ({
+        ...prev,
+        projectsCompleted: stats.totalProjects || 0,
+        skillsLearned: stats.totalSkills || 0,
+        achievementsUnlocked: stats.totalAchievements || 0
+      }));
+    }
+  }, [dashboardData]);
 
   const getRarityColor = (rarity: string) => {
     switch (rarity) {
@@ -382,6 +406,34 @@ export default function AchievementSystem({ userId }: AchievementSystemProps) {
     const nextLevelXp = (userStats.level + 1) * 200;
     const progress = ((userStats.xp - currentLevelXp) / (nextLevelXp - currentLevelXp)) * 100;
     return Math.max(0, Math.min(100, progress));
+  };
+
+  const handleUnlockAchievement = async (achievementId: string) => {
+    if (!user?.id) return;
+    
+    setIsUnlocking(true);
+    try {
+      const success = await unlockAchievement(achievementId);
+      if (success) {
+        // Update local state to reflect the unlocked achievement
+        setAchievements(prev => prev.map(achievement => 
+          achievement.id === achievementId 
+            ? { ...achievement, isUnlocked: true, unlockedAt: new Date().toISOString() }
+            : achievement
+        ));
+        
+        // Update user stats
+        setUserStats(prev => ({
+          ...prev,
+          achievementsUnlocked: prev.achievementsUnlocked + 1,
+          xp: prev.xp + 100 // Award XP for unlocking achievement
+        }));
+      }
+    } catch (error) {
+      console.error('Error unlocking achievement:', error);
+    } finally {
+      setIsUnlocking(false);
+    }
   };
 
   const filteredAchievements = achievements.filter(achievement => {
@@ -555,6 +607,18 @@ export default function AchievementSystem({ userId }: AchievementSystemProps) {
                               <Progress value={(req.current / req.target) * 100} className="h-2" />
                             </div>
                           ))}
+                          
+                          {/* Check if all requirements are met */}
+                          {achievement.requirements.every(req => req.current >= req.target) && (
+                            <Button 
+                              size="sm" 
+                              onClick={() => handleUnlockAchievement(achievement.id)}
+                              disabled={isUnlocking}
+                              className="mt-2"
+                            >
+                              {isUnlocking ? 'Unlocking...' : 'Unlock Achievement'}
+                            </Button>
+                          )}
                         </div>
                       )}
                     </div>

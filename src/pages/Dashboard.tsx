@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { useUserContext } from '@/hooks/useUserContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -17,11 +18,21 @@ import {
   ArrowRight,
   Zap,
   Award,
-  Clock
+  Clock,
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { 
+    dashboardData, 
+    isLoading, 
+    isDashboardLoading, 
+    dashboardError, 
+    refreshDashboard 
+  } = useUserContext();
+  
   const [userStats, setUserStats] = useState({
     roadmapsCompleted: 0,
     projectsCompleted: 0,
@@ -31,65 +42,106 @@ export default function Dashboard() {
     totalPoints: 0
   });
   const [recentActivity, setRecentActivity] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    loadUserDashboardData();
-  }, [user]);
+    if (dashboardData) {
+      updateUserStats();
+      updateRecentActivity();
+    }
+  }, [dashboardData]);
+
+  const updateUserStats = () => {
+    if (!dashboardData) return;
+    
+    const stats = dashboardData.stats || {};
+    const projects = dashboardData.projects || [];
+    const skills = dashboardData.skills || [];
+    const achievements = dashboardData.achievements || [];
+    
+    setUserStats({
+      roadmapsCompleted: stats.totalRoadmaps || 0,
+      projectsCompleted: projects.filter((p: any) => p.status === 'completed').length,
+      skillsLearned: stats.totalSkills || 0,
+      mentorshipSessions: 0, // TODO: Get from mentor sessions data
+      currentStreak: 7, // TODO: Calculate from user activity
+      totalPoints: achievements.reduce((sum: number, a: any) => sum + (a.points || 0), 0)
+    });
+  };
+
+  const updateRecentActivity = () => {
+    if (!dashboardData) return;
+    
+    const activities = [];
+    
+    // Add recent projects
+    const recentProjects = (dashboardData.projects || []).slice(0, 3);
+    recentProjects.forEach((project: any) => {
+      activities.push({
+        id: `project-${project.id}`,
+        type: 'project',
+        title: `Created project: ${project.title}`,
+        description: project.description,
+        timestamp: project.created_at,
+        icon: 'folder'
+      });
+    });
+    
+    // Add recent achievements
+    const recentAchievements = (dashboardData.achievements || []).slice(0, 2);
+    recentAchievements.forEach((achievement: any) => {
+      activities.push({
+        id: `achievement-${achievement.id}`,
+        type: 'achievement',
+        title: `Unlocked: ${achievement.title}`,
+        description: achievement.description,
+        timestamp: achievement.unlocked_at,
+        icon: 'trophy'
+      });
+    });
+    
+    // Sort by timestamp and take most recent
+    activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    setRecentActivity(activities.slice(0, 5));
+  };
 
   const loadUserDashboardData = async () => {
-    setIsLoading(true);
-    try {
-      // TODO: Replace with real API calls to get user's actual data
-      // For now, we'll calculate stats based on user's profile data
-      const userSkills = user?.skills || [];
-      const userInterests = user?.interests || [];
-      const skillAssessmentResults = user?.skill_assessment_results || {};
-      
-      // Calculate real stats based on user data
-      const stats = {
-        roadmapsCompleted: user?.selected_roadmaps?.length || 0,
-        projectsCompleted: 0, // TODO: Get from projects table
-        skillsLearned: userSkills.length,
-        mentorshipSessions: 0, // TODO: Get from mentorship sessions
-        currentStreak: 7, // TODO: Calculate from activity logs
-        totalPoints: Object.keys(skillAssessmentResults).length * 100 + userSkills.length * 50
-      };
-      
-      setUserStats(stats);
-      
-      // Generate recent activity based on user's actual data
-      const activity = [
-        {
-          id: 1,
-          type: 'skill',
-          title: `Completed skill assessment for ${userSkills[0] || 'your first skill'}`,
-          time: '2 hours ago',
-          points: 100
-        },
-        {
-          id: 2,
-          type: 'interest',
-          title: `Explored ${userInterests[0] || 'new interests'} in Curiosity Compass`,
-          time: '1 day ago',
-          points: 50
-        },
-        {
-          id: 3,
-          type: 'profile',
-          title: 'Updated your profile information',
-          time: '2 days ago',
-          points: 25
-        }
-      ];
-      
-      setRecentActivity(activity);
-    } catch (error) {
-      console.error('Error loading dashboard data:', error);
-    } finally {
-      setIsLoading(false);
-    }
+    await refreshDashboard();
   };
+
+  if (isDashboardLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center justify-center h-64">
+            <div className="flex items-center space-x-2">
+              <RefreshCw className="h-6 w-6 animate-spin" />
+              <span className="text-lg">Loading your dashboard...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (dashboardError) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">Error Loading Dashboard</h2>
+              <p className="text-gray-600 mb-4">{dashboardError}</p>
+              <Button onClick={loadUserDashboardData} variant="outline">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Try Again
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!user) {
     return <div>Loading...</div>;
@@ -98,22 +150,14 @@ export default function Dashboard() {
   // Check if this is a new user (just completed onboarding)
   const isNewUser = user.onboarding_completed && user.onboarding_step === 100;
 
-  const currentRoadmaps = [
-    {
-      id: 1,
-      title: 'React Advanced Patterns',
-      progress: 65,
-      nextStep: 'Learn Context API',
-      dueDate: '2024-02-15'
-    },
-    {
-      id: 2,
-      title: 'Data Science with Python',
-      progress: 30,
-      nextStep: 'Complete Statistics Module',
-      dueDate: '2024-03-01'
-    }
-  ];
+  // Get current roadmaps from dashboard data
+  const currentRoadmaps = (dashboardData?.roadmaps || []).slice(0, 2).map((roadmap: any) => ({
+    id: roadmap.id,
+    title: roadmap.title,
+    progress: Math.floor(Math.random() * 80) + 10, // TODO: Calculate real progress
+    nextStep: roadmap.steps?.[0]?.title || 'Start learning',
+    dueDate: roadmap.estimated_duration || '1 month'
+  }));
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">

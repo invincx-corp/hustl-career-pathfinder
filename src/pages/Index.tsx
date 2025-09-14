@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import Navigation from "@/components/layout/Navigation";
 import Footer from "@/components/layout/Footer";
 import HeroSection from "@/components/sections/HeroSection";
@@ -22,6 +23,14 @@ import JobMatching from "@/components/opportunities/JobMatching";
 import DomainSupplyDemand from "@/components/opportunities/DomainSupplyDemand";
 
 const Index = () => {
+  // Ensure page starts at the top when loaded
+  useEffect(() => {
+    // Clear any hash from URL and scroll to top
+    if (window.location.hash) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+    window.scrollTo(0, 0);
+  }, []);
   return (
     <div className="min-h-screen bg-background">
       <Navigation />

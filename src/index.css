@@ -167,6 +167,16 @@ All colors MUST be HSL.
   html {
     scroll-behavior: smooth;
   }
+  
+  /* Prevent auto-scroll on page load */
+  body {
+    scroll-behavior: auto;
+  }
+  
+  /* Only apply smooth scrolling to specific elements */
+  .smooth-scroll {
+    scroll-behavior: smooth;
+  }
 
   /* Focus styles for accessibility */
   *:focus-visible {

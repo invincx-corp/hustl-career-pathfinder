@@ -6,6 +6,9 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { useUserContext } from '@/hooks/useUserContext';
+import { useAuth } from '@/hooks/useAuth';
+import ApiService from '@/lib/api-services';
 import { 
   Dialog,
   DialogContent,
@@ -209,8 +212,11 @@ interface MentorMatchingProps {
 }
 
 export default function MentorMatching({ userId, userInterests, userSkills }: MentorMatchingProps) {
-  const [mentors, setMentors] = useState<Mentor[]>(SAMPLE_MENTORS);
-  const [filteredMentors, setFilteredMentors] = useState<Mentor[]>(SAMPLE_MENTORS);
+  const { user } = useAuth();
+  const { isLoading } = useUserContext();
+  
+  const [mentors, setMentors] = useState<Mentor[]>([]);
+  const [filteredMentors, setFilteredMentors] = useState<Mentor[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedExpertise, setSelectedExpertise] = useState<string>('all');
   const [selectedAvailability, setSelectedAvailability] = useState<string>('all');
@@ -219,10 +225,55 @@ export default function MentorMatching({ userId, userInterests, userSkills }: Me
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
+  const [isLoadingMentors, setIsLoadingMentors] = useState(false);
+  const [isSendingRequest, setIsSendingRequest] = useState(false);
+
+  // Load mentors from API
+  useEffect(() => {
+    loadMentors();
+  }, []);
 
   useEffect(() => {
     filterMentors();
   }, [searchTerm, selectedExpertise, selectedAvailability, mentors]);
+
+  const loadMentors = async () => {
+    setIsLoadingMentors(true);
+    try {
+      const response = await ApiService.getMentorProfiles({
+        expertise: selectedExpertise !== 'all' ? selectedExpertise : undefined,
+        min_rating: 4.0
+      });
+
+      if (response.success && response.data) {
+        const formattedMentors = response.data.map((mentor: any) => ({
+          id: mentor.id,
+          name: mentor.profiles?.full_name || 'Unknown',
+          title: mentor.bio || 'Mentor',
+          company: 'Professional Mentor',
+          avatar: mentor.profiles?.avatar_url || '',
+          bio: mentor.bio || 'Experienced mentor ready to help you grow',
+          expertise: mentor.expertise_areas || [],
+          experience: mentor.experience_years || 0,
+          rating: mentor.rating || 0,
+          totalReviews: mentor.total_ratings || 0,
+          hourlyRate: mentor.hourly_rate || 0,
+          isOnline: mentor.is_available || false,
+          responseTime: mentor.response_time_hours || 24,
+          successRate: mentor.success_rate || 0,
+          languages: ['English'],
+          timezone: mentor.timezone || 'UTC',
+          availability: mentor.availability_schedule || {},
+          verified: mentor.is_verified || false
+        }));
+        setMentors(formattedMentors);
+      }
+    } catch (error) {
+      console.error('Error loading mentors:', error);
+    } finally {
+      setIsLoadingMentors(false);
+    }
+  };
 
   const filterMentors = () => {
     let filtered = mentors;
@@ -266,10 +317,34 @@ export default function MentorMatching({ userId, userInterests, userSkills }: Me
     setNewMessage('');
   };
 
-  const handleRequestMentorship = (requestData: Partial<MentorshipRequest>) => {
-    // In a real app, this would send a request to the backend
-    console.log('Mentorship request:', requestData);
-    setIsRequestDialogOpen(false);
+  const handleRequestMentorship = async (requestData: Partial<MentorshipRequest>) => {
+    if (!user?.id || !selectedMentor) return;
+    
+    setIsSendingRequest(true);
+    try {
+      const response = await ApiService.requestMentorSession(
+        selectedMentor.id,
+        user.id,
+        {
+          title: requestData.title || 'Mentorship Request',
+          description: requestData.message || 'I would like to request a mentorship session',
+          session_type: requestData.sessionType || 'video_call',
+          scheduled_at: requestData.preferredTime || new Date().toISOString(),
+          duration_minutes: requestData.duration || 60
+        }
+      );
+
+      if (response.success) {
+        console.log('Mentorship request sent successfully');
+        setIsRequestDialogOpen(false);
+      } else {
+        console.error('Failed to send mentorship request:', response.error);
+      }
+    } catch (error) {
+      console.error('Error sending mentorship request:', error);
+    } finally {
+      setIsSendingRequest(false);
+    }
   };
 
   const getExpertiseOptions = () => {
@@ -655,8 +730,8 @@ function MentorshipRequestForm({ mentor, onSubmit, onCancel }: MentorshipRequest
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit">
-          Send Request
+        <Button type="submit" disabled={isSendingRequest}>
+          {isSendingRequest ? 'Sending...' : 'Send Request'}
         </Button>
       </div>
     </form>

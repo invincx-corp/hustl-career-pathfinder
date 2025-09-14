@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import ApiService from '@/lib/api-services';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -42,7 +43,8 @@ import {
   Unlock,
   ExternalLink,
   Copy,
-  Check
+  Check,
+  Users
 } from 'lucide-react';
 
 interface ResumeSection {
@@ -239,14 +241,174 @@ const mockAchievements: Achievement[] = [
 const LivingResume = () => {
   const { user } = useAuth();
   const [personalInfo, setPersonalInfo] = useState<PersonalInfo>(mockPersonalInfo);
-  const [experiences, setExperiences] = useState<Experience[]>(mockExperiences);
-  const [education, setEducation] = useState<Education[]>(mockEducation);
-  const [skills, setSkills] = useState<Skill[]>(mockSkills);
-  const [projects, setProjects] = useState<Project[]>(mockProjects);
-  const [achievements, setAchievements] = useState<Achievement[]>(mockAchievements);
+  const [experiences, setExperiences] = useState<Experience[]>([]);
+  const [education, setEducation] = useState<Education[]>([]);
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [activeTab, setActiveTab] = useState('preview');
   const [isEditing, setIsEditing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    loadResumeData();
+  }, [user]);
+
+  const loadResumeData = async () => {
+    setIsLoading(true);
+    try {
+      if (!user?.id) {
+        setIsLoading(false);
+        return;
+      }
+
+      // Load user profile for personal info
+      const profileResult = await ApiService.getUserProfile(user.id);
+      if (profileResult.success && profileResult.data) {
+        const profile = profileResult.data;
+        setPersonalInfo({
+          full_name: profile.full_name || user.email || 'User',
+          email: user.email || '',
+          phone: profile.phone || '',
+          location: profile.location || '',
+          website: profile.website || '',
+          github: profile.github || '',
+          linkedin: profile.linkedin || '',
+          twitter: profile.twitter || '',
+          bio: profile.bio || '',
+          avatar_url: profile.avatar_url || ''
+        });
+      }
+
+      // Load user skills
+      const skillsResult = await ApiService.getUserSkills(user.id);
+      if (skillsResult.success) {
+        const mappedSkills: Skill[] = skillsResult.data.map((skill: any) => ({
+          id: skill.id,
+          name: skill.name,
+          category: skill.category || 'technical',
+          level: skill.current_level >= 8 ? 'expert' : 
+                 skill.current_level >= 6 ? 'advanced' :
+                 skill.current_level >= 4 ? 'intermediate' : 'beginner',
+          years_experience: Math.floor(skill.total_time_spent / 365) || 0,
+          certifications: skill.certifications || []
+        }));
+        setSkills(mappedSkills);
+      }
+
+      // Load user projects
+      const projectsResult = await ApiService.getUserProjects(user.id);
+      if (projectsResult.success) {
+        const mappedProjects: Project[] = projectsResult.data.map((project: any) => ({
+          id: project.id,
+          name: project.title,
+          description: project.description,
+          technologies: project.technologies || [],
+          url: project.url || '',
+          github_url: project.github_url || '',
+          start_date: project.created_at,
+          end_date: project.completed_at || '',
+          is_featured: project.is_featured || false
+        }));
+        setProjects(mappedProjects);
+      }
+
+      // Load user achievements
+      const achievementsResult = await ApiService.getUserAchievements(user.id);
+      if (achievementsResult.success) {
+        const mappedAchievements: Achievement[] = achievementsResult.data.map((achievement: any) => ({
+          id: achievement.id,
+          title: achievement.title,
+          description: achievement.description,
+          date: achievement.unlocked_at,
+          category: achievement.category || 'award',
+          issuer: achievement.issuer || '',
+          url: achievement.url || ''
+        }));
+        setAchievements(mappedAchievements);
+      }
+
+      // Load resume sections from database
+      const resumeSectionsResult = await ApiService.getResumeSections(user.id);
+      if (resumeSectionsResult.success) {
+        const sections = resumeSectionsResult.data;
+        
+        // Process experience sections
+        const experienceSections = sections.filter((s: any) => s.type === 'experience');
+        if (experienceSections.length > 0) {
+          const mappedExperiences: Experience[] = experienceSections.map((section: any) => ({
+            id: section.id,
+            company: section.content.company || '',
+            position: section.content.position || '',
+            location: section.content.location || '',
+            start_date: section.content.start_date || '',
+            end_date: section.content.end_date || '',
+            is_current: section.content.is_current || false,
+            description: section.content.description || '',
+            achievements: section.content.achievements || [],
+            technologies: section.content.technologies || []
+          }));
+          setExperiences(mappedExperiences);
+        }
+
+        // Process education sections
+        const educationSections = sections.filter((s: any) => s.type === 'education');
+        if (educationSections.length > 0) {
+          const mappedEducation: Education[] = educationSections.map((section: any) => ({
+            id: section.id,
+            institution: section.content.institution || '',
+            degree: section.content.degree || '',
+            field: section.content.field || '',
+            start_date: section.content.start_date || '',
+            end_date: section.content.end_date || '',
+            gpa: section.content.gpa || '',
+            achievements: section.content.achievements || []
+          }));
+          setEducation(mappedEducation);
+        }
+      }
+
+    } catch (error) {
+      console.error('Error loading resume data:', error);
+      // Fallback to mock data
+      setExperiences(mockExperiences);
+      setEducation(mockEducation);
+      setSkills(mockSkills);
+      setProjects(mockProjects);
+      setAchievements(mockAchievements);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const updateResumeSection = async (sectionId: string, updates: any) => {
+    try {
+      if (!user?.id) return;
+
+      const result = await ApiService.updateResumeSection(sectionId, updates);
+      
+      if (result.success) {
+        // Reload resume data to reflect changes
+        loadResumeData();
+        
+        // Track the activity
+        await ApiService.trackUserActivity(user.id, {
+          activity_type: 'resume_update',
+          activity_name: 'Updated resume section',
+          category: 'living_resume',
+          page_url: '/living-resume',
+          metadata: {
+            section_id: sectionId,
+            updates: updates,
+            timestamp: new Date().toISOString()
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error updating resume section:', error);
+    }
+  };
 
   const getSkillLevelColor = (level: string) => {
     switch (level) {

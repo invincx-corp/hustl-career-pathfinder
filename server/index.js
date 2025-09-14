@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import config from './config.js';
 
 // Load environment variables
 dotenv.config();
@@ -12,17 +13,17 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    origin: process.env.FRONTEND_URL || "http://localhost:5174",
     methods: ["GET", "POST"]
   }
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = config.server.port;
 
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "http://localhost:5173",
+  origin: process.env.FRONTEND_URL || "http://localhost:5174",
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
@@ -46,6 +47,14 @@ import opportunitiesRoutes from './routes/opportunities.js';
 import roadmapRoutes from './routes/roadmaps.js';
 import aiRoutes from './routes/ai.js';
 import contentRoutes from './routes/content.js';
+import mentorRoutes from './routes/mentors.js';
+import intelligentContentRoutes from './routes/intelligent-content.js';
+import careerRoutes from './routes/career.js';
+import testAPIsRoutes from './routes/test-apis.js';
+import messagingRoutes from './routes/messaging.js';
+import forumRoutes from './routes/forums.js';
+import communityRoutes from './routes/community.js';
+import statusRoutes from './routes/status.js';
 
 // API routes
 app.get('/api/status', (req, res) => {
@@ -65,6 +74,14 @@ app.use('/api/opportunities', opportunitiesRoutes);
 app.use('/api/roadmaps', roadmapRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/content', contentRoutes);
+app.use('/api/mentors', mentorRoutes);
+app.use('/api/career', careerRoutes);
+app.use('/api/test', testAPIsRoutes);
+app.use('/api/messaging', messagingRoutes);
+app.use('/api/forums', forumRoutes);
+app.use('/api/community', communityRoutes);
+app.use('/api/intelligent-content', intelligentContentRoutes);
+app.use('/api', statusRoutes);
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
@@ -177,6 +194,93 @@ io.on('connection', (socket) => {
     } catch (error) {
       console.error('Error processing AI coach request:', error);
     }
+  });
+
+  // Phase 4: Real-time messaging
+  socket.on('join-conversation', (conversationId) => {
+    socket.join(`conversation-${conversationId}`);
+    console.log(`Client ${socket.id} joined conversation: ${conversationId}`);
+  });
+
+  socket.on('leave-conversation', (conversationId) => {
+    socket.leave(`conversation-${conversationId}`);
+    console.log(`Client ${socket.id} left conversation: ${conversationId}`);
+  });
+
+  socket.on('send-message', (data) => {
+    const { conversationId, userId, message, messageType = 'text' } = data;
+    
+    // Broadcast to conversation room
+    io.to(`conversation-${conversationId}`).emit('new-message', {
+      userId,
+      message,
+      messageType,
+      timestamp: new Date().toISOString()
+    });
+    
+    console.log(`Message sent in conversation ${conversationId}: ${message}`);
+  });
+
+  socket.on('typing-start', (data) => {
+    const { conversationId, userId } = data;
+    
+    // Broadcast typing indicator to conversation room
+    io.to(`conversation-${conversationId}`).emit('user-typing', {
+      userId,
+      isTyping: true,
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  socket.on('typing-stop', (data) => {
+    const { conversationId, userId } = data;
+    
+    // Broadcast typing stop to conversation room
+    io.to(`conversation-${conversationId}`).emit('user-typing', {
+      userId,
+      isTyping: false,
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  // Phase 4: Forum notifications
+  socket.on('join-forum', (forumId) => {
+    socket.join(`forum-${forumId}`);
+    console.log(`Client ${socket.id} joined forum: ${forumId}`);
+  });
+
+  socket.on('forum-post', (data) => {
+    const { forumId, topicId, userId, title } = data;
+    
+    // Broadcast new post to forum subscribers
+    io.to(`forum-${forumId}`).emit('new-forum-post', {
+      topicId,
+      userId,
+      title,
+      timestamp: new Date().toISOString()
+    });
+    
+    console.log(`New forum post in ${forumId}: ${title}`);
+  });
+
+  // Phase 4: Mentor session notifications
+  socket.on('mentor-session-update', (data) => {
+    const { mentorId, menteeId, sessionId, status } = data;
+    
+    // Notify both mentor and mentee
+    io.to(`user-${mentorId}`).emit('session-update', {
+      sessionId,
+      status,
+      timestamp: new Date().toISOString()
+    });
+    
+    io.to(`user-${menteeId}`).emit('session-update', {
+      sessionId,
+      status,
+      timestamp: new Date().toISOString()
+    });
+    
+    console.log(`Mentor session ${sessionId} status updated: ${status}`);
   });
 });
 

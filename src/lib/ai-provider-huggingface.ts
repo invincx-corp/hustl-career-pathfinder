@@ -62,15 +62,15 @@ export class HuggingFaceAIProvider {
   private initialize() {
     const apiKey = import.meta.env.VITE_HUGGINGFACE_API_KEY;
     
-    if (apiKey) {
+    if (apiKey && apiKey !== 'your_huggingface_api_key_here') {
       this.apiKey = apiKey;
       this.isConfigured = true;
-      console.log('🤗 Hugging Face AI Provider configured');
+      console.log('🤗 Hugging Face AI Provider configured with real API key');
       
       // Test API connectivity
       this.testAPIConnectivity();
     } else {
-      console.warn('Hugging Face API key not found. AI features will be simulated.');
+      console.warn('Hugging Face API key not found or not configured. AI features will be simulated.');
       this.isConfigured = false;
     }
   }

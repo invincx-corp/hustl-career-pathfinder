@@ -7,6 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useAuth } from '@/hooks/useAuth';
+import ApiService from '@/lib/api-services';
+import TeamCollaboration from './TeamCollaboration';
+import ProjectReview from './ProjectReview';
 import { 
   Plus, 
   Search, 
@@ -18,6 +21,7 @@ import {
   Eye, 
   Heart, 
   MessageCircle,
+  ThumbsUp,
   Code,
   Palette,
   Database,
@@ -63,6 +67,7 @@ interface Project {
   resources: string[];
   is_public: boolean;
   tags: string[];
+  review_score?: number;
 }
 
 interface TeamMember {
@@ -111,7 +116,8 @@ const mockProjects: Project[] = [
     learnings: ['Stripe API integration', 'React performance optimization'],
     resources: ['React documentation', 'Stripe guides', 'PostgreSQL tutorials'],
     is_public: true,
-    tags: ['ecommerce', 'fullstack', 'react', 'nodejs']
+    tags: ['ecommerce', 'fullstack', 'react', 'nodejs'],
+    review_score: 8.5
   },
   {
     id: '2',
@@ -136,7 +142,8 @@ const mockProjects: Project[] = [
     learnings: ['React Native navigation', 'Firebase real-time database'],
     resources: ['React Native docs', 'Firebase tutorials'],
     is_public: true,
-    tags: ['mobile', 'fitness', 'react-native', 'firebase']
+    tags: ['mobile', 'fitness', 'react-native', 'firebase'],
+    review_score: 9.2
   }
 ];
 
@@ -178,12 +185,14 @@ const projectTemplates: ProjectTemplate[] = [
 
 const ProjectPlayground = () => {
   const { user } = useAuth();
-  const [projects, setProjects] = useState<Project[]>(mockProjects);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [activeTab, setActiveTab] = useState('my-projects');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [newProject, setNewProject] = useState<Partial<Project>>({
     title: '',
     description: '',
@@ -194,6 +203,37 @@ const ProjectPlayground = () => {
     tags: [],
     is_public: true
   });
+
+  // Load projects on component mount
+  useEffect(() => {
+    const loadProjects = async () => {
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const result = await ApiService.getUserProjects(user.id, {
+          limit: 50
+        });
+
+        if (result.success && result.data) {
+          setProjects(result.data);
+        } else {
+          // Fallback to mock data if API fails
+          setProjects(mockProjects);
+        }
+      } catch (error) {
+        console.error('Error loading projects:', error);
+        // Fallback to mock data
+        setProjects(mockProjects);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadProjects();
+  }, [user]);
 
   const categories = ['all', 'web', 'mobile', 'desktop', 'data', 'design', 'other'];
   const statuses = ['all', 'planned', 'in_progress', 'completed', 'on_hold'];
@@ -239,43 +279,82 @@ const ProjectPlayground = () => {
     }
   };
 
-  const handleCreateProject = () => {
-    if (!newProject.title || !newProject.description) return;
+  const handleCreateProject = async () => {
+    if (!user) {
+      alert('Please log in to create a project');
+      return;
+    }
 
-    const project: Project = {
-      id: Date.now().toString(),
-      title: newProject.title,
-      description: newProject.description,
-      category: newProject.category as any,
-      status: newProject.status as any,
-      technologies: newProject.technologies || [],
-      team_members: [],
-      created_by: user?.id || '',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      progress: 0,
-      likes: 0,
-      views: 0,
-      features: newProject.features || [],
-      challenges: [],
-      learnings: [],
-      resources: [],
-      is_public: newProject.is_public || true,
-      tags: newProject.tags || []
-    };
+    if (!newProject.title || !newProject.description) {
+      alert('Please fill in all required fields');
+      return;
+    }
 
-    setProjects(prev => [project, ...prev]);
-    setIsCreateDialogOpen(false);
-    setNewProject({
-      title: '',
-      description: '',
-      category: 'web',
-      status: 'planned',
-      technologies: [],
-      features: [],
-      tags: [],
-      is_public: true
-    });
+    try {
+      const result = await ApiService.createProject(user.id, {
+        title: newProject.title!,
+        description: newProject.description!,
+        category: newProject.category as string,
+        technologies: newProject.technologies || [],
+        features: newProject.features || [],
+        estimated_duration: '2-4 weeks', // Default duration
+        difficulty: 'intermediate', // Default difficulty
+        is_public: newProject.is_public || true
+      });
+
+      if (result.success) {
+        // Reload projects to get the new one from the database
+        const projectsResult = await ApiService.getUserProjects(user.id, { limit: 50 });
+        if (projectsResult.success && projectsResult.data) {
+          setProjects(projectsResult.data);
+        }
+
+        // Reset form
+        setNewProject({
+          title: '',
+          description: '',
+          category: 'web',
+          status: 'planned',
+          technologies: [],
+          features: [],
+          tags: [],
+          is_public: true
+        });
+        setIsCreateDialogOpen(false);
+        
+        alert('Project created successfully!');
+      } else {
+        alert('Failed to create project. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error creating project:', error);
+      alert('Failed to create project. Please try again.');
+    }
+  };
+
+  const handleUpdateProject = async (projectId: string, updates: Partial<Project>) => {
+    if (!user) {
+      alert('Please log in to update a project');
+      return;
+    }
+
+    try {
+      const result = await ApiService.updateProject(projectId, updates);
+      
+      if (result.success) {
+        // Reload projects to get updated data from the database
+        const projectsResult = await ApiService.getUserProjects(user.id, { limit: 50 });
+        if (projectsResult.success && projectsResult.data) {
+          setProjects(projectsResult.data);
+        }
+        alert('Project updated successfully!');
+      } else {
+        alert('Failed to update project. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error updating project:', error);
+      alert('Failed to update project. Please try again.');
+    }
   };
 
   const handleUseTemplate = (template: ProjectTemplate) => {
@@ -290,6 +369,7 @@ const ProjectPlayground = () => {
       is_public: true
     });
     setIsCreateDialogOpen(true);
+    setActiveTab('my-projects'); // Switch to my projects tab to show the create dialog
   };
 
   return (
@@ -395,10 +475,11 @@ const ProjectPlayground = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="my-projects">My Projects</TabsTrigger>
           <TabsTrigger value="templates">Templates</TabsTrigger>
           <TabsTrigger value="collaborations">Collaborations</TabsTrigger>
+          <TabsTrigger value="reviews">Reviews</TabsTrigger>
           <TabsTrigger value="public">Public Projects</TabsTrigger>
         </TabsList>
 
@@ -497,14 +578,22 @@ const ProjectPlayground = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between text-sm">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
                       <div className="flex items-center space-x-1">
                         <Users className="h-4 w-4 text-gray-400" />
                         <span>{project.team_members.length} members</span>
                       </div>
                       <div className="flex items-center space-x-1">
                         <Eye className="h-4 w-4 text-gray-400" />
-                        <span>{project.views}</span>
+                        <span>{project.views || 0} views</span>
+                      </div>
+                      <div className="flex items-center space-x-1">
+                        <ThumbsUp className="h-4 w-4 text-gray-400" />
+                        <span>{project.likes || 0} likes</span>
+                      </div>
+                      <div className="flex items-center space-x-1">
+                        <Star className="h-4 w-4 text-gray-400" />
+                        <span>{project.review_score ? `${project.review_score.toFixed(1)}/10` : 'No score'}</span>
                       </div>
                     </div>
 
@@ -615,11 +704,97 @@ const ProjectPlayground = () => {
 
         <TabsContent value="collaborations" className="space-y-6">
           <h3 className="text-xl font-semibold">Team Collaborations</h3>
-          <div className="text-center py-12">
-            <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600">No active collaborations yet</p>
-            <p className="text-sm text-gray-500">Join a project or invite others to collaborate</p>
-          </div>
+          
+          {!selectedProject ? (
+            <div className="space-y-4">
+              <p className="text-gray-600">Select a project to view team collaboration features:</p>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {projects.map((project) => (
+                  <Card 
+                    key={project.id} 
+                    className="cursor-pointer hover:shadow-lg transition-shadow"
+                    onClick={() => setSelectedProject(project)}
+                  >
+                    <CardHeader>
+                      <CardTitle className="text-lg">{project.title}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm text-gray-600 line-clamp-2">{project.description}</p>
+                  <div className="flex items-center justify-between mt-4">
+                    <Badge variant="outline">{project.category}</Badge>
+                    <Badge className={getStatusColor(project.status)}>
+                      {project.status.replace('_', ' ')}
+                    </Badge>
+                  </div>
+                  
+                  {/* Project Analytics */}
+                  <div className="mt-4 pt-4 border-t">
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div>
+                        <p className="text-xs text-gray-500">Views</p>
+                        <p className="text-sm font-semibold">{project.views || 0}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Likes</p>
+                        <p className="text-sm font-semibold">{project.likes || 0}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Score</p>
+                        <p className="text-sm font-semibold">
+                          {project.review_score ? `${project.review_score.toFixed(1)}/10` : 'N/A'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Project Analytics */}
+                  <div className="mt-4 pt-4 border-t">
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div>
+                        <p className="text-xs text-gray-500">Views</p>
+                        <p className="text-sm font-semibold">{project.views || 0}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Likes</p>
+                        <p className="text-sm font-semibold">{project.likes || 0}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Score</p>
+                        <p className="text-sm font-semibold">
+                          {project.review_score ? `${project.review_score.toFixed(1)}/10` : 'N/A'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-lg font-semibold">{selectedProject.title}</h4>
+                  <p className="text-sm text-gray-600">{selectedProject.description}</p>
+                </div>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setSelectedProject(null)}
+                >
+                  Back to Projects
+                </Button>
+              </div>
+              <TeamCollaboration 
+                projectId={selectedProject.id} 
+                projectTitle={selectedProject.title}
+              />
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="reviews" className="space-y-6">
+          <ProjectReview showAllProjects={true} />
         </TabsContent>
 
         <TabsContent value="public" className="space-y-6">

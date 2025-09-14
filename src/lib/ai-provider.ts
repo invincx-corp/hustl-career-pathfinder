@@ -4,6 +4,9 @@ import { huggingFaceAIProvider } from './ai-provider-huggingface';
 export class AIProvider {
   private huggingFace = huggingFaceAIProvider;
   private isConfigured = false;
+  private huggingFaceConfigured = false;
+  private openaiConfigured = false;
+  private cohereConfigured = false;
   private careerKnowledgeBase = this.initializeCareerKnowledgeBase();
 
   constructor() {
@@ -11,8 +14,24 @@ export class AIProvider {
   }
 
   private initialize() {
-    const apiKey = import.meta.env.VITE_HUGGINGFACE_API_KEY;
-    this.isConfigured = !!apiKey;
+    const huggingFaceKey = import.meta.env.VITE_HUGGINGFACE_API_KEY;
+    const openaiKey = import.meta.env.VITE_OPENAI_API_KEY;
+    const cohereKey = import.meta.env.VITE_COHERE_API_KEY;
+    
+    this.huggingFaceConfigured = !!(huggingFaceKey && huggingFaceKey !== 'your_huggingface_api_key_here' && !huggingFaceKey.includes('hf_'));
+    this.openaiConfigured = !!(openaiKey && openaiKey !== 'sk-your_openai_api_key_here' && !openaiKey.includes('sk-proj-'));
+    this.cohereConfigured = !!(cohereKey && cohereKey !== 'your_cohere_api_key_here' && !cohereKey.includes('yJBoWvLj6Sn3j7zZMUAfbhQoLIgkfN278iZchSi5'));
+    
+    this.isConfigured = this.huggingFaceConfigured || this.openaiConfigured || this.cohereConfigured;
+    
+    if (this.isConfigured) {
+      console.log('🤖 AI Provider configured with real services');
+      if (this.openaiConfigured) console.log('  ✅ OpenAI GPT-4 available');
+      if (this.huggingFaceConfigured) console.log('  ✅ Hugging Face available');
+      if (this.cohereConfigured) console.log('  ✅ Cohere available');
+    } else {
+      console.warn('⚠️ No AI services configured. Using simulated responses.');
+    }
   }
 
   // Generate AI roadmap
@@ -21,26 +40,63 @@ export class AIProvider {
       return this.simulateRoadmapGeneration(goal, userProfile);
     }
 
-    try {
-      return await this.huggingFace.generateRoadmap(goal, userProfile);
-    } catch (error: any) {
-      console.warn('Hugging Face AI failed, using simulated response:', error.message);
-      return this.simulateRoadmapGeneration(goal, userProfile);
+    // Try OpenAI first (best quality)
+    if (this.openaiConfigured) {
+      try {
+        return await this.generateRoadmapWithOpenAI(goal, userProfile);
+      } catch (error: any) {
+        console.warn('OpenAI failed, trying Hugging Face:', error.message);
+      }
     }
+
+    // Try Hugging Face
+    if (this.huggingFaceConfigured) {
+      try {
+        return await this.huggingFace.generateRoadmap(goal, userProfile);
+      } catch (error: any) {
+        console.warn('Hugging Face AI failed, trying Cohere:', error.message);
+      }
+    }
+
+    // Try Cohere
+    if (this.cohereConfigured) {
+      try {
+        return await this.generateRoadmapWithCohere(goal, userProfile);
+      } catch (error: any) {
+        console.warn('Cohere failed, using simulated response:', error.message);
+      }
+    }
+
+    // Final fallback
+    return this.simulateRoadmapGeneration(goal, userProfile);
   }
 
   // Generate skill gap analysis
-  async analyzeSkillGaps(currentSkills: string[], targetRole: string): Promise<any> {
+  async analyzeSkillGaps(currentSkills: string[], targetRole: string, userProfile?: any): Promise<any> {
     if (!this.isConfigured) {
       return this.simulateSkillAnalysis(currentSkills, targetRole);
     }
 
-    try {
-      return await this.huggingFace.analyzeSkillGaps(currentSkills, targetRole);
-    } catch (error: any) {
-      console.warn('Hugging Face AI failed, using simulated response:', error.message);
-      return this.simulateSkillAnalysis(currentSkills, targetRole);
+    // Try OpenAI first (best quality)
+    if (this.openaiConfigured) {
+      try {
+        return await this.analyzeSkillGapsWithOpenAI(currentSkills, targetRole, userProfile);
+      } catch (error: any) {
+        console.warn('OpenAI failed, trying Hugging Face:', error.message);
+      }
     }
+
+    // Try Hugging Face
+    if (this.huggingFaceConfigured) {
+      try {
+        return await this.huggingFace.analyzeSkillGaps(currentSkills, targetRole);
+      } catch (error: any) {
+        console.warn('Hugging Face AI failed, using simulated response:', error.message);
+      }
+    }
+
+    // Final fallback
+    return this.simulateSkillAnalysis(currentSkills, targetRole);
   }
 
   // Enhanced career coach response with real-time analysis
@@ -49,28 +105,334 @@ export class AIProvider {
       return this.generateEnhancedSimulatedResponse(userMessage, context);
     }
 
-    try {
-      // Real-time context analysis
-      const analyzedContext = this.analyzeUserContext(context);
-      
-      // Generate intelligent response using AI
-      const aiResponse = await this.huggingFace.generateEnhancedCoachResponse(
-        userMessage, 
-        analyzedContext
-      );
-      
-      // Enhance with career intelligence
-      const enhancedResponse = this.enhanceResponseWithCareerIntelligence(
-        aiResponse, 
-        userMessage, 
-        analyzedContext
-      );
-      
-      return enhancedResponse;
-    } catch (error: any) {
-      console.warn('AI failed, using enhanced simulated response:', error.message);
-      return this.generateEnhancedSimulatedResponse(userMessage, context);
+    // Try OpenAI first (best quality)
+    if (this.openaiConfigured) {
+      try {
+        return await this.generateCoachResponseWithOpenAI(userMessage, context);
+      } catch (error: any) {
+        console.warn('OpenAI failed, trying Hugging Face:', error.message);
+      }
     }
+
+    // Try Hugging Face
+    if (this.huggingFaceConfigured) {
+      try {
+        // Real-time context analysis
+        const analyzedContext = this.analyzeUserContext(context);
+        
+        // Generate intelligent response using AI
+        const aiResponse = await this.huggingFace.generateEnhancedCoachResponse(
+          userMessage, 
+          analyzedContext
+        );
+        
+        // Enhance with career intelligence
+        const enhancedResponse = this.enhanceResponseWithCareerIntelligence(
+          aiResponse, 
+          userMessage, 
+          analyzedContext
+        );
+        
+        return enhancedResponse;
+      } catch (error: any) {
+        console.warn('Hugging Face AI failed, using simulated response:', error.message);
+      }
+    }
+
+    // Final fallback
+    return this.generateEnhancedSimulatedResponse(userMessage, context);
+  }
+
+  // Real AI Service Methods
+
+  // OpenAI Roadmap Generation
+  private async generateRoadmapWithOpenAI(goal: string, userProfile: any): Promise<any> {
+    const prompt = `Create a detailed learning roadmap for someone who wants to achieve this goal: "${goal}"
+
+User Profile:
+- Experience Level: ${userProfile?.experience_level || 'beginner'}
+- Current Skills: ${(userProfile?.skills || []).join(', ') || 'None specified'}
+- Interests: ${(userProfile?.interests || []).join(', ') || 'Not specified'}
+- Goals: ${(userProfile?.goals || []).join(', ') || 'Not specified'}
+
+Please create a structured roadmap with:
+1. 5-8 learning steps in logical order
+2. Each step should have: title, description, duration, type (foundation/advanced/capstone), and resources
+3. Include practical projects and real-world applications
+4. Consider the user's experience level and provide appropriate difficulty progression
+5. Include estimated total time and key skills to be learned
+
+Format the response as a JSON object with this structure:
+{
+  "steps": [
+    {
+      "id": "1",
+      "title": "Step Title",
+      "description": "Detailed description",
+      "duration": "2-3 weeks",
+      "type": "foundation",
+      "completed": false,
+      "resources": [
+        {
+          "title": "Resource Name",
+          "type": "course",
+          "duration": "10 hours",
+          "difficulty": "beginner"
+        }
+      ]
+    }
+  ],
+  "estimatedTime": "12-16 weeks",
+  "difficulty": "beginner",
+  "skills": ["skill1", "skill2"],
+  "category": "Category Name"
+}`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${import.meta.env.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert career coach and learning path designer. Create detailed, practical learning roadmaps that help people achieve their career goals. Always respond with valid JSON.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 2000
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const roadmap = JSON.parse(data.choices[0].message.content);
+    return roadmap;
+  }
+
+  // Cohere Roadmap Generation
+  private async generateRoadmapWithCohere(goal: string, userProfile: any): Promise<any> {
+    const prompt = `Create a learning roadmap for: ${goal}. User level: ${userProfile?.experience_level || 'beginner'}. Skills: ${(userProfile?.skills || []).join(', ')}. Provide 5-8 steps with titles, descriptions, and durations.`;
+
+    const response = await fetch('https://api.cohere.ai/v1/generate', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${import.meta.env.COHERE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'command',
+        prompt: prompt,
+        max_tokens: 1000,
+        temperature: 0.7
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Cohere API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    // Process Cohere response and create basic roadmap structure
+    return this.createRoadmapFromText(data.generations[0].text, goal, userProfile);
+  }
+
+  // OpenAI Skill Gap Analysis
+  private async analyzeSkillGapsWithOpenAI(currentSkills: string[], targetRole: string, userProfile: any): Promise<any> {
+    const prompt = `Analyze the skill gap for someone transitioning to the role of "${targetRole}".
+
+Current Skills: ${(currentSkills || []).join(', ') || 'None specified'}
+Target Role: ${targetRole}
+User Experience Level: ${userProfile?.experience_level || 'beginner'}
+User Goals: ${(userProfile?.goals || []).join(', ') || 'Not specified'}
+
+Please provide a detailed analysis including:
+1. Missing skills required for this role
+2. Priority skills to learn first (top 3)
+3. Learning path for each priority skill
+4. Estimated time to close the gap
+5. Current skill level percentage
+6. Specific recommendations
+
+Format the response as a JSON object with this structure:
+{
+  "missingSkills": ["skill1", "skill2"],
+  "prioritySkills": ["priority1", "priority2", "priority3"],
+  "learningPath": [
+    {
+      "skill": "skill name",
+      "estimatedTime": "3-4 weeks",
+      "difficulty": "intermediate",
+      "resources": [
+        {
+          "type": "course",
+          "title": "Course Name"
+        }
+      ]
+    }
+  ],
+  "estimatedTime": "6-12 months",
+  "currentSkillLevel": 25,
+  "recommendations": ["recommendation1", "recommendation2"]
+}`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${import.meta.env.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert career coach and skills analyst. Analyze skill gaps and provide actionable learning recommendations. Always respond with valid JSON.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 1500
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const analysis = JSON.parse(data.choices[0].message.content);
+    return analysis;
+  }
+
+  // OpenAI Career Coach Response
+  private async generateCoachResponseWithOpenAI(userMessage: string, context: any): Promise<any> {
+    const { userProfile, currentSkills, goals, experienceLevel } = context;
+    
+    const prompt = `You are an expert career coach and mentor. Respond to this user message with empathy, practical advice, and actionable suggestions.
+
+User Message: "${userMessage}"
+
+User Context:
+- Experience Level: ${experienceLevel || 'beginner'}
+- Current Skills: ${(currentSkills || []).join(', ') || 'None specified'}
+- Goals: ${(goals || []).join(', ') || 'Not specified'}
+- Interests: ${(userProfile?.interests || []).join(', ') || 'Not specified'}
+
+Please provide:
+1. A thoughtful, empathetic response (2-3 sentences)
+2. 3-4 practical suggestions with titles and descriptions
+3. 2-3 actionable items with due dates and priorities
+4. Context about the user's level and situation
+
+Format the response as a JSON object with this structure:
+{
+  "content": "Your empathetic response here",
+  "suggestions": [
+    {
+      "title": "Suggestion Title",
+      "type": "action",
+      "description": "Detailed description"
+    }
+  ],
+  "actionItems": [
+    {
+      "id": "unique_id",
+      "title": "Action Item Title",
+      "type": "learning",
+      "dueDate": "This week",
+      "priority": "high",
+      "estimatedTime": "2 hours"
+    }
+  ],
+  "context": {
+    "userLevel": "beginner",
+    "skillCount": 5,
+    "goalCount": 3
+  }
+}`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${import.meta.env.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert career coach who provides empathetic, practical, and actionable advice to people navigating their career journey. Always respond with valid JSON and be encouraging yet realistic.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.8,
+        max_tokens: 1500
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const coachResponse = JSON.parse(data.choices[0].message.content);
+    return coachResponse;
+  }
+
+  // Helper method to create roadmap from text
+  private createRoadmapFromText(text: string, goal: string, userProfile: any): any {
+    // Parse the text and create a basic roadmap structure
+    const lines = text.split('\n').filter(line => line.trim());
+    const steps = [];
+    
+    let stepId = 1;
+    for (const line of lines) {
+      if (line.match(/^\d+\./) || line.match(/^Step/)) {
+        steps.push({
+          id: stepId.toString(),
+          title: line.replace(/^\d+\.\s*/, '').replace(/^Step\s+\d+:\s*/, ''),
+          description: `Learn and practice ${line.replace(/^\d+\.\s*/, '').replace(/^Step\s+\d+:\s*/, '')}`,
+          duration: '2-3 weeks',
+          type: stepId <= 2 ? 'foundation' : 'advanced',
+          completed: false,
+          resources: [
+            {
+              title: `${line.replace(/^\d+\.\s*/, '').replace(/^Step\s+\d+:\s*/, '')} Course`,
+              type: 'course',
+              duration: '10 hours',
+              difficulty: 'beginner'
+            }
+          ]
+        });
+        stepId++;
+      }
+    }
+
+    return {
+      steps,
+      estimatedTime: `${Math.ceil(steps.length * 3)}-${Math.ceil(steps.length * 4)} weeks`,
+      difficulty: userProfile?.experience_level || 'beginner',
+      skills: steps.map(step => step.title),
+      category: 'General'
+    };
   }
 
   // Simulate responses when AI is not configured
@@ -481,10 +843,10 @@ export class AIProvider {
     goals.forEach(goal => {
       const goal_lower = goal.toLowerCase();
       if (goal_lower.includes('web')) {
-        allSkills.push(...this.careerKnowledgeBase.skills.frontend, ...this.careerKnowledgeBase.skills.backend);
+        allSkills.push(...this.careerKnowledgeBase.skills.programming, ...this.careerKnowledgeBase.skills.design);
       }
       if (goal_lower.includes('mobile')) {
-        allSkills.push(...this.careerKnowledgeBase.skills.mobile);
+        allSkills.push(...this.careerKnowledgeBase.skills.programming, ...this.careerKnowledgeBase.skills.design);
       }
       if (goal_lower.includes('ai') || goal_lower.includes('machine learning')) {
         allSkills.push(...this.careerKnowledgeBase.skills.ai_ml);
@@ -616,6 +978,143 @@ export class AIProvider {
   // Check if AI is properly configured
   isReady(): boolean {
     return this.isConfigured;
+  }
+
+  // Analyze interest patterns for Curiosity Compass
+  async analyzeInterestPatterns(interestProfile: any): Promise<any> {
+    if (!this.isConfigured) {
+      return this.simulateInterestAnalysis(interestProfile);
+    }
+
+    try {
+      // Use Hugging Face for interest analysis
+      return await this.huggingFace.generateRoadmap('interest analysis', interestProfile);
+    } catch (error: any) {
+      console.warn('Hugging Face AI failed, using simulated analysis:', error.message);
+      return this.simulateInterestAnalysis(interestProfile);
+    }
+  }
+
+  // Generate resume content from user data
+  async generateResumeContent(userData: any): Promise<any> {
+    if (!this.isConfigured) {
+      return this.simulateResumeGeneration(userData);
+    }
+
+    try {
+      // Use Hugging Face for resume generation
+      return await this.huggingFace.generateRoadmap('resume generation', userData);
+    } catch (error: any) {
+      console.warn('Hugging Face AI failed, using simulated resume:', error.message);
+      return this.simulateResumeGeneration(userData);
+    }
+  }
+
+  // Simulate interest pattern analysis
+  private simulateInterestAnalysis(interestProfile: any): any {
+    const domains = Object.keys(interestProfile.domain_interests || {});
+    const topDomains = domains
+      .map(domain => ({
+        domain,
+        score: interestProfile.domain_interests[domain].interested / 
+               interestProfile.domain_interests[domain].total_interactions
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+
+    return {
+      top_interests: topDomains,
+      interest_trends: {
+        exploration_level: domains.length > 5 ? 'high' : 'moderate',
+        focus_areas: topDomains.map(d => d.domain),
+        learning_style: 'hands-on'
+      },
+      recommendations: [
+        'Consider exploring related domains',
+        'Focus on your top interest areas',
+        'Try interdisciplinary approaches'
+      ]
+    };
+  }
+
+  // Simulate resume generation
+  private simulateResumeGeneration(userData: any): any {
+    const { userProfile, skills, roadmaps, activities, projects } = userData;
+    
+    return {
+      summary: `Experienced professional with ${skills?.length || 0} skills and ${projects?.length || 0} completed projects.`,
+      experience: this.generateExperienceSection(activities, projects),
+      skills: this.generateSkillsSection(skills),
+      education: this.generateEducationSection(roadmaps),
+      achievements: this.generateAchievementsSection(activities, projects, skills)
+    };
+  }
+
+  private generateExperienceSection(activities: any[], projects: any[]): any {
+    const experience = [];
+    
+    if (projects && projects.length > 0) {
+      projects.forEach(project => {
+        experience.push({
+          title: project.title || 'Project',
+          company: 'Personal Projects',
+          duration: 'Recent',
+          description: project.description || 'Completed project',
+          achievements: ['Successfully delivered project', 'Applied technical skills']
+        });
+      });
+    }
+
+    return experience;
+  }
+
+  private generateSkillsSection(skills: any[]): any {
+    if (!skills || skills.length === 0) return [];
+    
+    const skillCategories = {};
+    skills.forEach(skill => {
+      const category = skill.skill_categories?.name || 'Technical';
+      if (!skillCategories[category]) {
+        skillCategories[category] = [];
+      }
+      skillCategories[category].push(skill.skill_name || skill.name);
+    });
+
+    return Object.entries(skillCategories).map(([category, skillList]) => ({
+      category,
+      skills: skillList
+    }));
+  }
+
+  private generateEducationSection(roadmaps: any[]): any {
+    if (!roadmaps || roadmaps.length === 0) return [];
+    
+    return roadmaps
+      .filter(r => r.progress >= 100)
+      .map(roadmap => ({
+        institution: 'Self-Directed Learning',
+        degree: roadmap.title,
+        field: roadmap.category,
+        completion_date: roadmap.updated_at
+      }));
+  }
+
+  private generateAchievementsSection(activities: any[], projects: any[], skills: any[]): any[] {
+    const achievements = [];
+    
+    if (skills && skills.length > 0) {
+      achievements.push(`Mastered ${skills.length} technical skills`);
+    }
+    
+    if (projects && projects.length > 0) {
+      achievements.push(`Completed ${projects.length} projects`);
+    }
+    
+    if (activities && activities.length > 0) {
+      achievements.push(`Engaged in ${activities.length} learning activities`);
+    }
+
+    return achievements;
   }
 
   // Get configuration status

@@ -629,7 +629,7 @@ CREATE TABLE IF NOT EXISTS public.notifications (
     user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
     
     -- Notification Details
-    type TEXT NOT NULL CHECK (type IN ('achievement', 'mentorship', 'project', 'system', 'reminder', 'social')),
+    type TEXT NOT NULL CHECK (type IN ('achievement', 'mentor', 'project', 'system', 'reminder', 'social')),
     title TEXT NOT NULL,
     message TEXT NOT NULL,
     
@@ -641,7 +641,7 @@ CREATE TABLE IF NOT EXISTS public.notifications (
     -- Status
     is_read BOOLEAN DEFAULT FALSE,
     is_archived BOOLEAN DEFAULT FALSE,
-    priority TEXT DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high', 'urgent')),
+    priority TEXT DEFAULT 'normal' CHECK (priority IN ('low', 'medium', 'normal', 'high', 'urgent')),
     
     -- Delivery
     delivery_method TEXT[] DEFAULT '{"in_app"}', -- in_app, email, push
@@ -2145,7 +2145,6 @@ CREATE INDEX IF NOT EXISTS idx_user_mood_tracking_date ON public.user_mood_track
 CREATE INDEX IF NOT EXISTS idx_ai_therapy_sessions_user_id ON public.ai_therapy_sessions(user_id);
 
 -- Community indexes
-CREATE INDEX IF NOT EXISTS idx_user_connections_user_id ON public.user_connections(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_connections_status ON public.user_connections(status);
 CREATE INDEX IF NOT EXISTS idx_community_groups_type ON public.community_groups(group_type);
 CREATE INDEX IF NOT EXISTS idx_group_memberships_group_id ON public.group_memberships(group_id);
@@ -2196,7 +2195,7 @@ CREATE POLICY "Anyone can view public groups" ON public.community_groups FOR SEL
 CREATE POLICY "Group members can view private groups" ON public.community_groups FOR SELECT USING (
     EXISTS (SELECT 1 FROM public.group_memberships WHERE group_id = id AND user_id = auth.uid())
 );
-CREATE POLICY "Users can view own connections" ON public.user_connections FOR SELECT USING (auth.uid() = user_id OR connected_user_id = auth.uid());
+-- CREATE POLICY "Users can view own connections" ON public.user_connections FOR SELECT USING (auth.uid() = user_id OR connected_user_id = auth.uid()); -- REMOVED DUPLICATE
 
 -- =====================================================
 -- ADDITIONAL TRIGGERS FOR NEW FEATURES
@@ -2297,11 +2296,591 @@ CREATE INDEX IF NOT EXISTS idx_skill_categories_sort_order ON public.skill_categ
 -- =====================================================
 
 -- Log completion
+-- =====================================================
+-- ADDITIONAL TABLES FROM SCRIPTS FOLDER
+-- =====================================================
+
+-- =====================================================
+-- CONTENT MANAGEMENT SYSTEM (PHASE 3)
+-- =====================================================
+
+-- Learning Content Table
+CREATE TABLE IF NOT EXISTS public.learning_content (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    category TEXT NOT NULL,
+    subcategory TEXT,
+    duration INTEGER NOT NULL, -- in minutes
+    difficulty TEXT NOT NULL CHECK (difficulty IN ('beginner', 'intermediate', 'advanced')),
+    type TEXT NOT NULL CHECK (type IN ('video', 'article', 'interactive', 'quiz', 'project')),
+    source TEXT NOT NULL,
+    source_url TEXT,
+    thumbnail_url TEXT,
+    tags TEXT[] DEFAULT '{}',
+    prerequisites TEXT[] DEFAULT '{}',
+    learning_objectives TEXT[] DEFAULT '{}',
+    content_data JSONB DEFAULT '{}',
+    is_published BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_by UUID REFERENCES auth.users(id) ON DELETE CASCADE
+);
+
+-- User Progress Table
+CREATE TABLE IF NOT EXISTS public.user_progress (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    content_id UUID REFERENCES public.learning_content(id) ON DELETE CASCADE NOT NULL,
+    progress_percentage INTEGER DEFAULT 0 CHECK (progress_percentage >= 0 AND progress_percentage <= 100),
+    time_spent INTEGER DEFAULT 0, -- in minutes
+    is_completed BOOLEAN DEFAULT FALSE,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    last_accessed TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    notes TEXT,
+    rating INTEGER CHECK (rating >= 1 AND rating <= 5),
+    UNIQUE(user_id, content_id)
+);
+
+-- Badges Table
+CREATE TABLE IF NOT EXISTS public.badges (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    icon_url TEXT,
+    category TEXT CHECK (category IN ('learning', 'achievement', 'milestone', 'special')) NOT NULL,
+    rarity TEXT CHECK (rarity IN ('common', 'rare', 'epic', 'legendary')) NOT NULL,
+    requirements JSONB, -- JSON data for badge requirements
+    xp_reward INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- User Badges Table
+CREATE TABLE IF NOT EXISTS public.user_badges (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    badge_id UUID REFERENCES public.badges(id) ON DELETE CASCADE NOT NULL,
+    earned_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(user_id, badge_id)
+);
+
+-- Learning Paths
+CREATE TABLE IF NOT EXISTS public.learning_paths (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    category TEXT NOT NULL,
+    difficulty TEXT CHECK (difficulty IN ('beginner', 'intermediate', 'advanced')),
+    estimated_duration INTEGER, -- in hours
+    is_published BOOLEAN DEFAULT FALSE,
+    created_by UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Learning Path Modules
+CREATE TABLE IF NOT EXISTS public.path_modules (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    path_id UUID REFERENCES public.learning_paths(id) ON DELETE CASCADE NOT NULL,
+    content_id UUID REFERENCES public.learning_content(id) ON DELETE CASCADE NOT NULL,
+    module_order INTEGER NOT NULL,
+    is_required BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- User Learning Paths
+CREATE TABLE IF NOT EXISTS public.user_learning_paths (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    path_id UUID REFERENCES public.learning_paths(id) ON DELETE CASCADE NOT NULL,
+    progress_percentage INTEGER DEFAULT 0 CHECK (progress_percentage >= 0 AND progress_percentage <= 100),
+    is_completed BOOLEAN DEFAULT FALSE,
+    started_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    completed_at TIMESTAMP WITH TIME ZONE,
+    UNIQUE(user_id, path_id)
+);
+
+-- =====================================================
+-- MENTORSHIP SYSTEM (PHASE 4) - ENHANCED TABLES
+-- =====================================================
+
+-- Mentor profiles (enhanced version)
+CREATE TABLE IF NOT EXISTS public.mentor_profiles (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    bio TEXT,
+    expertise_areas TEXT[] NOT NULL DEFAULT '{}',
+    years_of_experience INTEGER NOT NULL DEFAULT 0,
+    current_position VARCHAR(255),
+    company VARCHAR(255),
+    linkedin_url VARCHAR(500),
+    github_url VARCHAR(500),
+    portfolio_url VARCHAR(500),
+    hourly_rate DECIMAL(10,2),
+    currency VARCHAR(3) DEFAULT 'USD',
+    languages TEXT[] DEFAULT '{"English"}',
+    timezone VARCHAR(50) DEFAULT 'UTC',
+    availability_schedule JSONB DEFAULT '{}',
+    max_students INTEGER DEFAULT 10,
+    current_students INTEGER DEFAULT 0,
+    rating DECIMAL(3,2) DEFAULT 0.0,
+    total_sessions INTEGER DEFAULT 0,
+    total_hours DECIMAL(8,2) DEFAULT 0.0,
+    is_verified BOOLEAN DEFAULT FALSE,
+    verification_documents JSONB DEFAULT '{}',
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Mentor specializations
+CREATE TABLE IF NOT EXISTS public.mentor_specializations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    mentor_id UUID NOT NULL REFERENCES public.mentor_profiles(id) ON DELETE CASCADE,
+    category VARCHAR(100) NOT NULL, -- 'technical', 'soft_skills', 'career', 'domain_specific'
+    skill VARCHAR(100) NOT NULL,
+    proficiency_level INTEGER CHECK (proficiency_level BETWEEN 1 AND 5),
+    years_experience INTEGER DEFAULT 0,
+    certifications TEXT[] DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(mentor_id, category, skill)
+);
+
+-- Mentor availability
+CREATE TABLE IF NOT EXISTS public.mentor_availability (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    mentor_id UUID NOT NULL REFERENCES public.mentor_profiles(id) ON DELETE CASCADE,
+    day_of_week INTEGER CHECK (day_of_week BETWEEN 0 AND 6), -- 0=Sunday, 6=Saturday
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    timezone TEXT DEFAULT 'UTC',
+    session_types TEXT[] DEFAULT '{}', -- 'one_time', 'ongoing', 'project_based'
+    max_duration_minutes INTEGER DEFAULT 60,
+    hourly_rate DECIMAL(10,2) NOT NULL,
+    currency TEXT DEFAULT 'USD',
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Mentorship sessions (enhanced version)
+CREATE TABLE IF NOT EXISTS public.mentor_sessions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    mentor_id UUID NOT NULL REFERENCES public.mentor_profiles(id) ON DELETE CASCADE,
+    mentee_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    description TEXT,
+    session_date TIMESTAMP WITH TIME ZONE NOT NULL,
+    duration_minutes INTEGER DEFAULT 60,
+    meeting_url TEXT,
+    meeting_password TEXT,
+    agenda JSONB DEFAULT '[]',
+    notes TEXT,
+    action_items JSONB DEFAULT '[]',
+    resources_shared JSONB DEFAULT '[]',
+    status TEXT DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'in_progress', 'completed', 'cancelled', 'no_show')),
+    mentor_rating INTEGER CHECK (mentor_rating BETWEEN 1 AND 5),
+    mentee_rating INTEGER CHECK (mentee_rating BETWEEN 1 AND 5),
+    mentor_feedback TEXT,
+    mentee_feedback TEXT,
+    started_at TIMESTAMP WITH TIME ZONE,
+    ended_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- =====================================================
+-- COMMUNITY FEATURES (PHASE 4)
+-- =====================================================
+
+-- User connections (follow/following) - REMOVED DUPLICATE
+
+-- Direct messages
+CREATE TABLE IF NOT EXISTS public.direct_messages (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    sender_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    recipient_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    message TEXT NOT NULL,
+    message_type VARCHAR(20) DEFAULT 'text', -- 'text', 'image', 'file', 'link'
+    attachment_url TEXT,
+    is_read BOOLEAN DEFAULT FALSE,
+    read_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Forum categories
+CREATE TABLE IF NOT EXISTS public.forum_categories (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    description TEXT,
+    color VARCHAR(7) DEFAULT '#3B82F6',
+    icon TEXT,
+    sort_order INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Forum posts
+CREATE TABLE IF NOT EXISTS public.forum_posts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    category_id UUID REFERENCES public.forum_categories(id) ON DELETE CASCADE NOT NULL,
+    author_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    tags TEXT[] DEFAULT '{}',
+    is_pinned BOOLEAN DEFAULT FALSE,
+    is_locked BOOLEAN DEFAULT FALSE,
+    view_count INTEGER DEFAULT 0,
+    like_count INTEGER DEFAULT 0,
+    reply_count INTEGER DEFAULT 0,
+    last_reply_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Forum replies
+CREATE TABLE IF NOT EXISTS public.forum_replies (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    post_id UUID REFERENCES public.forum_posts(id) ON DELETE CASCADE NOT NULL,
+    author_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    content TEXT NOT NULL,
+    parent_reply_id UUID REFERENCES public.forum_replies(id) ON DELETE CASCADE,
+    like_count INTEGER DEFAULT 0,
+    is_solution BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Study groups
+CREATE TABLE IF NOT EXISTS public.study_groups (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    description TEXT,
+    category TEXT NOT NULL,
+    max_members INTEGER DEFAULT 20,
+    current_members INTEGER DEFAULT 1,
+    is_public BOOLEAN DEFAULT TRUE,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_by UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Study group members
+CREATE TABLE IF NOT EXISTS public.study_group_members (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    group_id UUID REFERENCES public.study_groups(id) ON DELETE CASCADE NOT NULL,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    role VARCHAR(20) DEFAULT 'member', -- 'member', 'moderator', 'admin'
+    joined_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(group_id, user_id)
+);
+
+-- Peer reviews
+CREATE TABLE IF NOT EXISTS public.peer_reviews (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    reviewer_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    reviewee_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    review_type VARCHAR(50) NOT NULL, -- 'project', 'skill', 'mentorship', 'general'
+    content_id UUID, -- Optional: reference to specific content
+    rating INTEGER CHECK (rating BETWEEN 1 AND 5),
+    feedback TEXT NOT NULL,
+    strengths TEXT[] DEFAULT '{}',
+    areas_for_improvement TEXT[] DEFAULT '{}',
+    is_anonymous BOOLEAN DEFAULT FALSE,
+    is_public BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- =====================================================
+-- AI COACHING SYSTEM (PHASE 4)
+-- =====================================================
+
+-- AI coaching sessions
+CREATE TABLE IF NOT EXISTS public.ai_coaching_sessions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    session_type VARCHAR(50) DEFAULT 'career_coach', -- 'career_coach', 'skill_guidance', 'project_help'
+    title TEXT,
+    context JSONB DEFAULT '{}', -- User context for AI
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- AI coaching messages
+CREATE TABLE IF NOT EXISTS public.ai_coaching_messages (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id UUID REFERENCES public.ai_coaching_sessions(id) ON DELETE CASCADE NOT NULL,
+    sender_type VARCHAR(20) NOT NULL, -- 'user', 'ai', 'system'
+    content TEXT NOT NULL,
+    message_data JSONB DEFAULT '{}', -- Additional message metadata
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Skill gap analyses (enhanced version)
+CREATE TABLE IF NOT EXISTS public.skill_gap_analyses (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    target_role TEXT NOT NULL,
+    current_skills_assessment JSONB NOT NULL DEFAULT '{}',
+    target_skills_required JSONB NOT NULL DEFAULT '{}',
+    skill_gaps JSONB NOT NULL DEFAULT '{}',
+    recommended_courses JSONB DEFAULT '[]',
+    recommended_projects JSONB DEFAULT '[]',
+    learning_path JSONB DEFAULT '[]',
+    estimated_time_to_target TEXT,
+    priority_skills TEXT[] DEFAULT '{}',
+    market_demand_scores JSONB DEFAULT '{}',
+    overall_match_score DECIMAL(3,2),
+    is_active BOOLEAN DEFAULT TRUE,
+    last_updated TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- =====================================================
+-- NOTIFICATION SETTINGS (ENHANCED)
+-- =====================================================
+
+-- Notification settings for user preferences
+CREATE TABLE IF NOT EXISTS public.notification_settings (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL UNIQUE,
+    
+    -- Notification Settings
+    settings JSONB NOT NULL DEFAULT '{
+        "emailNotifications": true,
+        "pushNotifications": true,
+        "reminderNotifications": true,
+        "achievementNotifications": true,
+        "socialNotifications": true,
+        "mentorNotifications": true,
+        "systemNotifications": true,
+        "reminderTime": "09:00",
+        "reminderDays": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+        "quietHours": {
+            "enabled": true,
+            "start": "22:00",
+            "end": "08:00"
+        },
+        "frequency": "immediate"
+    }',
+    
+    -- Timestamps
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- =====================================================
+-- ADDITIONAL RLS POLICIES FOR NEW TABLES
+-- =====================================================
+
+-- Enable RLS on new tables
+ALTER TABLE public.learning_content ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_progress ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.badges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_badges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.learning_paths ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.path_modules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_learning_paths ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mentor_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mentor_specializations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mentor_availability ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mentor_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_connections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.direct_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.forum_categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.forum_posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.forum_replies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.study_groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.study_group_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.peer_reviews ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ai_coaching_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ai_coaching_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.skill_gap_analyses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notification_settings ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for new tables
+CREATE POLICY "Anyone can view published learning content" ON public.learning_content FOR SELECT USING (is_published = true);
+CREATE POLICY "Users can view own progress" ON public.user_progress FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can manage own progress" ON public.user_progress FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Anyone can view active badges" ON public.badges FOR SELECT USING (is_active = true);
+CREATE POLICY "Users can view own badges" ON public.user_badges FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can manage own badges" ON public.user_badges FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Anyone can view published learning paths" ON public.learning_paths FOR SELECT USING (is_published = true);
+CREATE POLICY "Users can view own learning paths" ON public.user_learning_paths FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can manage own learning paths" ON public.user_learning_paths FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "Anyone can view active mentors" ON public.mentor_profiles FOR SELECT USING (is_active = true);
+CREATE POLICY "Users can create own mentor profile" ON public.mentor_profiles FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own mentor profile" ON public.mentor_profiles FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can view own connections" ON public.user_connections FOR SELECT USING (auth.uid() = user_id OR auth.uid() = connected_user_id);
+CREATE POLICY "Users can create connections" ON public.user_connections FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can view own messages" ON public.direct_messages FOR SELECT USING (auth.uid() = sender_id OR auth.uid() = recipient_id);
+CREATE POLICY "Users can send messages" ON public.direct_messages FOR INSERT WITH CHECK (auth.uid() = sender_id);
+
+CREATE POLICY "Anyone can view forum categories" ON public.forum_categories FOR SELECT USING (is_active = true);
+CREATE POLICY "Anyone can view forum posts" ON public.forum_posts FOR SELECT USING (true);
+CREATE POLICY "Users can create forum posts" ON public.forum_posts FOR INSERT WITH CHECK (auth.uid() = author_id);
+CREATE POLICY "Users can update own forum posts" ON public.forum_posts FOR UPDATE USING (auth.uid() = author_id);
+CREATE POLICY "Anyone can view forum replies" ON public.forum_replies FOR SELECT USING (true);
+CREATE POLICY "Users can create forum replies" ON public.forum_replies FOR INSERT WITH CHECK (auth.uid() = author_id);
+CREATE POLICY "Users can update own forum replies" ON public.forum_replies FOR UPDATE USING (auth.uid() = author_id);
+
+CREATE POLICY "Anyone can view active study groups" ON public.study_groups FOR SELECT USING (is_active = true);
+CREATE POLICY "Users can create study groups" ON public.study_groups FOR INSERT WITH CHECK (auth.uid() = created_by);
+CREATE POLICY "Users can view own study group memberships" ON public.study_group_members FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can join study groups" ON public.study_group_members FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can view own peer reviews" ON public.peer_reviews FOR SELECT USING (auth.uid() = reviewer_id OR auth.uid() = reviewee_id);
+CREATE POLICY "Users can create peer reviews" ON public.peer_reviews FOR INSERT WITH CHECK (auth.uid() = reviewer_id);
+
+CREATE POLICY "Users can view own coaching sessions" ON public.ai_coaching_sessions FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can create own coaching sessions" ON public.ai_coaching_sessions FOR INSERT WITH CHECK (auth.uid() = user_id);
+-- CREATE POLICY "Users can view own skill analyses" ON public.skill_gap_analyses FOR SELECT USING (auth.uid() = user_id); -- REMOVED DUPLICATE
+-- CREATE POLICY "Users can create own skill analyses" ON public.skill_gap_analyses FOR INSERT WITH CHECK (auth.uid() = user_id); -- REMOVED DUPLICATE
+
+CREATE POLICY "Users can view own notification settings" ON public.notification_settings FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can manage own notification settings" ON public.notification_settings FOR ALL USING (auth.uid() = user_id);
+
+-- =====================================================
+-- ADDITIONAL TRIGGERS FOR NEW TABLES
+-- =====================================================
+
+-- Updated_at triggers for new tables - REMOVED DUPLICATES
+-- These triggers are already created earlier in the schema
+
+-- =====================================================
+-- ADDITIONAL INDEXES FOR NEW TABLES
+-- =====================================================
+
+-- Indexes for new tables
+CREATE INDEX IF NOT EXISTS idx_learning_content_category ON public.learning_content(category);
+CREATE INDEX IF NOT EXISTS idx_learning_content_difficulty ON public.learning_content(difficulty);
+CREATE INDEX IF NOT EXISTS idx_learning_content_published ON public.learning_content(is_published);
+CREATE INDEX IF NOT EXISTS idx_user_progress_user_id ON public.user_progress(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_progress_content_id ON public.user_progress(content_id);
+CREATE INDEX IF NOT EXISTS idx_learning_paths_category ON public.learning_paths(category);
+CREATE INDEX IF NOT EXISTS idx_learning_paths_published ON public.learning_paths(is_published);
+CREATE INDEX IF NOT EXISTS idx_user_learning_paths_user_id ON public.user_learning_paths(user_id);
+CREATE INDEX IF NOT EXISTS idx_mentor_profiles_user_id ON public.mentor_profiles(user_id);
+CREATE INDEX IF NOT EXISTS idx_mentor_profiles_active ON public.mentor_profiles(is_active);
+CREATE INDEX IF NOT EXISTS idx_mentor_specializations_mentor_id ON public.mentor_specializations(mentor_id);
+CREATE INDEX IF NOT EXISTS idx_mentor_availability_mentor_id ON public.mentor_availability(mentor_id);
+CREATE INDEX IF NOT EXISTS idx_mentor_sessions_mentor_id ON public.mentor_sessions(mentor_id);
+CREATE INDEX IF NOT EXISTS idx_mentor_sessions_mentee_id ON public.mentor_sessions(mentee_id);
+CREATE INDEX IF NOT EXISTS idx_user_connections_user_id ON public.user_connections(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_connections_connected_user_id ON public.user_connections(connected_user_id);
+CREATE INDEX IF NOT EXISTS idx_direct_messages_sender ON public.direct_messages(sender_id);
+CREATE INDEX IF NOT EXISTS idx_direct_messages_recipient ON public.direct_messages(recipient_id);
+CREATE INDEX IF NOT EXISTS idx_forum_posts_category ON public.forum_posts(category_id);
+CREATE INDEX IF NOT EXISTS idx_forum_posts_author ON public.forum_posts(author_id);
+CREATE INDEX IF NOT EXISTS idx_forum_replies_post_id ON public.forum_replies(post_id);
+CREATE INDEX IF NOT EXISTS idx_forum_replies_author ON public.forum_replies(author_id);
+CREATE INDEX IF NOT EXISTS idx_study_groups_category ON public.study_groups(category);
+CREATE INDEX IF NOT EXISTS idx_study_groups_active ON public.study_groups(is_active);
+CREATE INDEX IF NOT EXISTS idx_study_group_members_group_id ON public.study_group_members(group_id);
+CREATE INDEX IF NOT EXISTS idx_study_group_members_user_id ON public.study_group_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_peer_reviews_reviewer ON public.peer_reviews(reviewer_id);
+CREATE INDEX IF NOT EXISTS idx_peer_reviews_reviewee ON public.peer_reviews(reviewee_id);
+CREATE INDEX IF NOT EXISTS idx_ai_coaching_sessions_user ON public.ai_coaching_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_coaching_messages_session ON public.ai_coaching_messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_skill_gap_analyses_user ON public.skill_gap_analyses(user_id);
+CREATE INDEX IF NOT EXISTS idx_notification_settings_user_id ON public.notification_settings(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON public.notifications(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON public.notifications(is_read);
+
+-- =====================================================
+-- SAMPLE DATA FOR NEW TABLES
+-- =====================================================
+
+-- Insert sample forum categories
+INSERT INTO public.forum_categories (name, description, color, icon) VALUES
+('General Discussion', 'General questions and discussions', '#3B82F6', '💬'),
+('Technical Help', 'Technical questions and support', '#10B981', '🔧'),
+('Career Advice', 'Career guidance and mentorship', '#F59E0B', '💼'),
+('Project Showcase', 'Share your projects and get feedback', '#8B5CF6', '🚀'),
+('Learning Resources', 'Share and discover learning materials', '#06B6D4', '📚')
+ON CONFLICT DO NOTHING;
+
+-- Insert sample badges
+INSERT INTO public.badges (name, description, category, rarity, xp_reward) VALUES
+('First Steps', 'Complete your first lesson', 'learning', 'common', 50),
+('Code Master', 'Complete 10 coding projects', 'achievement', 'rare', 200),
+('Mentor Helper', 'Help 5 other users', 'milestone', 'epic', 500),
+('Community Champion', 'Most active forum contributor', 'special', 'legendary', 1000)
+ON CONFLICT DO NOTHING;
+
+-- Insert sample notifications for testing (only if users exist)
+DO $$
+BEGIN
+    -- Only insert sample notifications if there are users in auth.users
+    IF EXISTS (SELECT 1 FROM auth.users LIMIT 1) THEN
+        -- Add welcome notification for first user
+        INSERT INTO public.notifications (user_id, type, title, message, priority, action_url, action_text, data)
+        SELECT 
+            u.id,
+            'system',
+            'Welcome to Nexa!',
+            'Start your learning journey by completing your first lesson.',
+            'high',
+            '/learning-paths',
+            'Start Learning',
+            '{"icon": "🎉", "category": "welcome"}'
+        FROM auth.users u
+        WHERE u.id NOT IN (
+            SELECT DISTINCT user_id FROM public.notifications WHERE type = 'system' AND data->>'category' = 'welcome'
+        )
+        LIMIT 1;
+        
+        -- Add achievement notification
+        INSERT INTO public.notifications (user_id, type, title, message, priority, action_url, action_text, data)
+        SELECT 
+            u.id,
+            'achievement',
+            'Achievement Unlocked!',
+            'You''ve completed your first lesson. Keep up the great work!',
+            'medium',
+            '/achievements',
+            'View Achievements',
+            '{"icon": "🏆", "category": "achievement"}'
+        FROM auth.users u
+        WHERE u.id NOT IN (
+            SELECT DISTINCT user_id FROM public.notifications WHERE type = 'achievement' AND data->>'category' = 'achievement'
+        )
+        LIMIT 1;
+        
+        -- Add mentor notification
+        INSERT INTO public.notifications (user_id, type, title, message, priority, action_url, action_text, data)
+        SELECT 
+            u.id,
+            'mentor',
+            'New Mentor Available',
+            'Sarah Johnson is now available for mentorship in React development.',
+            'low',
+            '/mentor-matchmaking',
+            'Connect',
+            '{"icon": "👩‍💻", "category": "mentorship"}'
+        FROM auth.users u
+        WHERE u.id NOT IN (
+            SELECT DISTINCT user_id FROM public.notifications WHERE type = 'mentor' AND data->>'category' = 'mentorship'
+        )
+        LIMIT 1;
+    END IF;
+END $$;
+
+-- =====================================================
+-- COMPLETION MESSAGE
+-- =====================================================
+
 DO $$
 BEGIN
     RAISE NOTICE 'Nexa database schema created successfully!';
     RAISE NOTICE 'Tables created: profiles, roadmaps, projects, mentors, chat_conversations, and more';
     RAISE NOTICE 'Additional features: courses, teams, skill gaps, resumes, gamification, and more';
+    RAISE NOTICE 'Phase 3 & 4 features: learning content, mentorship, community, AI coaching';
     RAISE NOTICE 'RLS policies enabled for data security';
     RAISE NOTICE 'Triggers and functions configured';
     RAISE NOTICE 'Ready for your complete Nexa platform!';

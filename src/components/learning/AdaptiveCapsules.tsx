@@ -6,6 +6,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
 import { contentManagementService, LearningContent, UserProgress, Badge as BadgeType } from '@/lib/content-management';
+import ApiService from '@/lib/api-services';
+import offlineStorageService from '@/lib/offline-storage';
 import { 
   BookOpen, 
   Play, 
@@ -106,6 +108,8 @@ const AdaptiveCapsules = () => {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedDifficulty, setSelectedDifficulty] = useState('all');
   const [activeTab, setActiveTab] = useState('all');
+  const [personalizedPath, setPersonalizedPath] = useState<any[]>([]);
+  const [showPersonalizedPath, setShowPersonalizedPath] = useState(false);
 
   const categories = ['all', 'Frontend Development', 'Design', 'Data Science', 'Soft Skills', 'Backend Development', 'Mobile Development', 'DevOps', 'Business'];
   const difficulties = ['all', 'beginner', 'intermediate', 'advanced'];
@@ -119,42 +123,45 @@ const AdaptiveCapsules = () => {
       }
 
       try {
-        // Load content list
-        const { data: contentData } = await contentManagementService.getContentList({
+        // Initialize offline storage
+        await offlineStorageService.initialize();
+
+        // Load content list with real API
+        const contentResult = await ApiService.getLearningContent({
+          user_id: user.id,
           limit: 50
         });
 
-        if (contentData) {
-          // Load user progress for each content
-          const capsulesWithProgress = await Promise.all(
-            contentData.map(async (content) => {
-              const { data: progressData } = await contentManagementService.getUserProgress(
-                user.id,
-                content.id
-              );
-              
-              return {
-                ...content,
-                userProgress: progressData?.[0],
-                isOffline: offlineContent.includes(content.id),
-                rating: 4.5 // Default rating, could be fetched from reviews
-              };
-            })
-          );
+        if (contentResult.success && contentResult.data) {
+          // Get offline content status
+          const offlineContentList = await offlineStorageService.getAllOfflineContent();
+          const offlineContentIds = offlineContentList.map(oc => oc.id);
+
+          const capsulesWithProgress = contentResult.data.map(content => ({
+            ...content,
+            isOffline: offlineContentIds.includes(content.id),
+            rating: 4.5 // Default rating, could be fetched from reviews
+          }));
 
           setCapsules(capsulesWithProgress);
+          setOfflineContent(offlineContentIds);
         }
 
         // Load user badges
-        const { data: badgesData } = await contentManagementService.getUserBadges(user.id);
-        if (badgesData) {
-          setUserBadges(badgesData.map(ub => ub.badges).filter(Boolean));
+        const badgesResult = await ApiService.getUserBadges(user.id);
+        if (badgesResult.success && badgesResult.data) {
+          setUserBadges(badgesResult.data.map(ub => ub.badges).filter(Boolean));
         }
 
-        // Load offline content
-        const { data: offlineData } = await contentManagementService.getOfflineContent(user.id);
-        if (offlineData) {
-          setOfflineContent(offlineData.map(oc => oc.content_id));
+        // Load personalized recommendations
+        const recommendationsResult = await ApiService.getContentRecommendations(user.id);
+        if (recommendationsResult.success && recommendationsResult.data) {
+          // Store recommendations for the recommendations tab
+          setCapsules(prev => {
+            const existingIds = prev.map(c => c.id);
+            const newRecommendations = recommendationsResult.data.filter(r => !existingIds.includes(r.id));
+            return [...prev, ...newRecommendations];
+          });
         }
 
       } catch (error) {
@@ -167,7 +174,7 @@ const AdaptiveCapsules = () => {
     };
 
     loadData();
-  }, [user, offlineContent]);
+  }, [user]);
 
   const filteredCapsules = capsules.filter(capsule => {
     const matchesSearch = capsule.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -202,17 +209,34 @@ const AdaptiveCapsules = () => {
     if (!user) return;
 
     try {
-      const { error } = await contentManagementService.downloadForOffline(user.id, capsuleId);
-      if (!error) {
+      // Check storage space
+      const storageUsage = await offlineStorageService.getStorageUsage();
+      if (storageUsage.availableSpace < 1024 * 1024) { // Less than 1MB
+        alert('Not enough storage space for offline content');
+        return;
+      }
+
+      // Find the capsule data
+      const capsule = capsules.find(c => c.id === capsuleId);
+      if (!capsule) return;
+
+      // Download content for offline access
+      const success = await offlineStorageService.downloadContent(capsuleId, capsule);
+      
+      if (success) {
         setOfflineContent(prev => [...prev, capsuleId]);
-        setCapsules(prev => prev.map(capsule => 
-          capsule.id === capsuleId 
-            ? { ...capsule, isOffline: true }
-            : capsule
+        setCapsules(prev => prev.map(c => 
+          c.id === capsuleId 
+            ? { ...c, isOffline: true }
+            : c
         ));
+        alert(`${capsule.title} downloaded for offline access`);
+      } else {
+        alert('Failed to download content for offline access');
       }
     } catch (error) {
       console.error('Error downloading content:', error);
+      alert('Failed to download content for offline access');
     }
   };
 
@@ -220,14 +244,24 @@ const AdaptiveCapsules = () => {
     if (!user) return;
 
     try {
-      // Update last accessed time
-      await contentManagementService.updateProgress(user.id, capsuleId, {
+      // Find the capsule
+      const capsule = capsules.find(c => c.id === capsuleId);
+      if (!capsule) return;
+
+      // Update last accessed time using real API
+      await ApiService.updateContentProgress(user.id, capsuleId, {
+        progress_percentage: capsule.userProgress?.progress_percentage || 0,
+        time_spent: capsule.userProgress?.time_spent || 0,
+        is_completed: capsule.userProgress?.is_completed || false,
         last_accessed: new Date().toISOString()
       });
 
       // In a real app, this would open the capsule content
       console.log('Starting capsule:', capsuleId);
       // TODO: Implement content viewer/player
+      
+      // For now, show a simple alert
+      alert(`Starting ${capsule.title}. Content viewer will be implemented in the next phase.`);
     } catch (error) {
       console.error('Error starting capsule:', error);
     }
@@ -237,30 +271,127 @@ const AdaptiveCapsules = () => {
     if (!user) return;
 
     try {
-      await contentManagementService.markAsCompleted(user.id, capsuleId);
-      
-      // Update local state
-      setCapsules(prev => prev.map(capsule => 
-        capsule.id === capsuleId 
-          ? { 
-              ...capsule, 
-              userProgress: {
-                ...capsule.userProgress,
-                is_completed: true,
-                progress_percentage: 100,
-                completed_at: new Date().toISOString()
-              }
-            }
-          : capsule
-      ));
+      // Find the capsule
+      const capsule = capsules.find(c => c.id === capsuleId);
+      if (!capsule) return;
 
-      // Reload badges to check for new achievements
-      const { data: badgesData } = await contentManagementService.getUserBadges(user.id);
-      if (badgesData) {
-        setUserBadges(badgesData.map(ub => ub.badges).filter(Boolean));
+      // Update progress to 100% using real API
+      const result = await ApiService.updateContentProgress(user.id, capsuleId, {
+        progress_percentage: 100,
+        time_spent: capsule.userProgress?.time_spent || capsule.duration || 0,
+        is_completed: true,
+        last_accessed: new Date().toISOString()
+      });
+
+      if (result.success) {
+        // Update local state
+        setCapsules(prev => prev.map(c => 
+          c.id === capsuleId 
+            ? { 
+                ...c, 
+                userProgress: {
+                  ...c.userProgress,
+                  is_completed: true,
+                  progress_percentage: 100,
+                  completed_at: new Date().toISOString()
+                }
+              }
+            : c
+        ));
+
+        // Check for badge eligibility
+        await checkBadgeEligibility(capsule);
+
+        alert(`${capsule.title} marked as completed!`);
+      } else {
+        alert('Failed to mark content as completed');
       }
     } catch (error) {
       console.error('Error completing capsule:', error);
+      alert('Failed to mark content as completed');
+    }
+  };
+
+  const checkBadgeEligibility = async (capsule: CapsuleWithProgress) => {
+    if (!user) return;
+
+    try {
+      // Get user's completed content count
+      const progressResult = await ApiService.getUserContentProgress(user.id);
+      if (progressResult.success) {
+        const completedCount = progressResult.data.filter(p => p.is_completed).length;
+        
+        // Award badges based on completion milestones
+        if (completedCount === 1) {
+          await ApiService.awardBadge(user.id, 'first_completion', 'Completed your first learning content');
+        } else if (completedCount === 5) {
+          await ApiService.awardBadge(user.id, 'learning_streak', 'Completed 5 learning contents');
+        } else if (completedCount === 10) {
+          await ApiService.awardBadge(user.id, 'dedicated_learner', 'Completed 10 learning contents');
+        }
+
+        // Category-specific badges
+        const categoryProgress = progressResult.data.filter(p => 
+          p.learning_content?.category === capsule.category && p.is_completed
+        ).length;
+
+        if (categoryProgress === 3) {
+          await ApiService.awardBadge(user.id, `${capsule.category.toLowerCase()}_expert`, `Completed 3 ${capsule.category} contents`);
+        }
+
+        // Reload badges
+        const badgesResult = await ApiService.getUserBadges(user.id);
+        if (badgesResult.success && badgesResult.data) {
+          setUserBadges(badgesResult.data.map(ub => ub.badges).filter(Boolean));
+        }
+      }
+    } catch (error) {
+      console.error('Error checking badge eligibility:', error);
+    }
+  };
+
+  const generatePersonalizedPath = async () => {
+    if (!user) return;
+
+    try {
+      // Get user's learning progress and behavior data
+      const [progressResult, recommendationsResult] = await Promise.all([
+        ApiService.getUserContentProgress(user.id),
+        ApiService.getContentRecommendations(user.id, { limit: 20 })
+      ]);
+
+      if (progressResult.success && recommendationsResult.success) {
+        const userProgress = progressResult.data || [];
+        const userRecommendations = recommendationsResult.data || [];
+        
+        // Create a personalized learning path based on user progress and recommendations
+        const personalizedCapsules = capsules.map(capsule => {
+          const progress = userProgress.find(p => p.content_id === capsule.id);
+          const recommendation = userRecommendations.find(r => r.content_id === capsule.id);
+          
+          return {
+            ...capsule,
+            progress: progress?.completion_percentage || 0,
+            isRecommended: !!recommendation,
+            recommendationReason: recommendation?.reason || '',
+            priority: recommendation?.priority || 'medium'
+          };
+        });
+
+        // Sort by priority and recommendation status
+        const sortedPath = personalizedCapsules.sort((a, b) => {
+          if (a.isRecommended && !b.isRecommended) return -1;
+          if (!a.isRecommended && b.isRecommended) return 1;
+          if (a.priority === 'high' && b.priority !== 'high') return -1;
+          if (a.priority !== 'high' && b.priority === 'high') return 1;
+          return a.progress - b.progress; // Show incomplete ones first
+        });
+
+        setPersonalizedPath(sortedPath);
+        setShowPersonalizedPath(true);
+      }
+    } catch (error) {
+      console.error('Error generating personalized path:', error);
     }
   };
 
@@ -353,9 +484,10 @@ const AdaptiveCapsules = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="all">All Capsules</TabsTrigger>
           <TabsTrigger value="recommended">Recommended</TabsTrigger>
+          <TabsTrigger value="personalized">My Path</TabsTrigger>
           <TabsTrigger value="offline">Offline</TabsTrigger>
           <TabsTrigger value="completed">Completed</TabsTrigger>
         </TabsList>
@@ -519,6 +651,107 @@ const AdaptiveCapsules = () => {
                 </Card>
               ))}
           </div>
+        </TabsContent>
+
+        <TabsContent value="personalized" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xl font-semibold">Your Personalized Learning Path</h3>
+            <Button onClick={generatePersonalizedPath} variant="outline">
+              <Target className="h-4 w-4 mr-2" />
+              Generate My Path
+            </Button>
+          </div>
+          
+          {showPersonalizedPath && personalizedPath.length > 0 ? (
+            <div className="space-y-4">
+              <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-lg">
+                <h4 className="font-semibold text-blue-800 mb-2">🎯 Your Custom Learning Journey</h4>
+                <p className="text-blue-700 text-sm">
+                  This path is tailored based on your progress, interests, and learning goals. 
+                  Start with recommended content and follow the suggested order for optimal learning.
+                </p>
+              </div>
+              
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {personalizedPath.map((capsule, index) => (
+                  <Card key={capsule.id} className={`hover:shadow-lg transition-shadow ${
+                    capsule.isRecommended ? 'ring-2 ring-blue-200 bg-blue-50' : ''
+                  }`}>
+                    <CardHeader>
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <span className="text-sm font-medium text-blue-600">#{index + 1}</span>
+                            {capsule.isRecommended && (
+                              <Badge className="bg-blue-100 text-blue-800">Recommended</Badge>
+                            )}
+                            {capsule.priority === 'high' && (
+                              <Badge className="bg-red-100 text-red-800">High Priority</Badge>
+                            )}
+                          </div>
+                          <CardTitle className="text-lg">{capsule.title}</CardTitle>
+                        </div>
+                        <Badge variant="outline">{capsule.difficulty}</Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm text-gray-600 line-clamp-2 mb-4">{capsule.description}</p>
+                      
+                      {capsule.recommendationReason && (
+                        <div className="bg-blue-50 p-3 rounded-lg mb-4">
+                          <p className="text-sm text-blue-800">
+                            <strong>Why recommended:</strong> {capsule.recommendationReason}
+                          </p>
+                        </div>
+                      )}
+                      
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span>Progress</span>
+                          <span>{capsule.progress}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                            style={{ width: `${capsule.progress}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex space-x-2 mt-4">
+                        <Button 
+                          size="sm" 
+                          className="flex-1"
+                          onClick={() => handleStart(capsule)}
+                        >
+                          {capsule.progress > 0 ? 'Continue' : 'Start'}
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleDownload(capsule)}
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <Target className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-gray-600 mb-2">No Personalized Path Yet</h3>
+              <p className="text-gray-500 mb-4">
+                Generate your personalized learning path based on your progress and interests.
+              </p>
+              <Button onClick={generatePersonalizedPath}>
+                <Target className="h-4 w-4 mr-2" />
+                Create My Learning Path
+              </Button>
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="offline" className="space-y-6">

@@ -28,7 +28,11 @@
     "install:dev": "npm install && cd server && npm install && npm run type-check",
     "install:all": "npm install && cd server && npm install",
     "setup:db": "node scripts/setup-database-manual.js",
-    "test:auth": "echo 'Testing authentication flow...' && npm run dev"
+    "test:auth": "echo 'Testing authentication flow...' && npm run dev",
+    "health-check": "node scripts/health-check.js",
+    "monitor": "node scripts/monitor.js",
+    "test:system": "node scripts/test-system.js",
+    "test:all": "npm run health-check && npm run test:system"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -110,6 +114,8 @@
     "chokidar": "^3.6.0",
     "concurrently": "^9.1.0",
     "eslint": "^9.32.0",
+    "axios": "^1.11.0",
+    "chalk": "^4.1.2",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^15.15.0",

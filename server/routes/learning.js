@@ -1,5 +1,7 @@
 import express from 'express';
 import { supabase } from '../lib/supabase.js';
+import { mockResponses } from '../lib/mock-data.js';
+import config from '../config.js';
 
 const router = express.Router();
 
@@ -7,6 +9,12 @@ const router = express.Router();
 router.get('/skills/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
+    
+    // Use mock data if database is not configured
+    if (config.features.mockDataEnabled && !config.features.databaseEnabled) {
+      const response = mockResponses.getSkills(userId);
+      return res.json(response);
+    }
     
     // Get user profile to extract skills
     const { data: profile, error: profileError } = await supabase
